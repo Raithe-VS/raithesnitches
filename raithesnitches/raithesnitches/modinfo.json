@@ -1,0 +1,13 @@
+{
+    "type": "code",
+    "modid": "raithesnitches",
+    "name": "raithesnitches",
+    "authors": [
+        "Raithe"
+    ],
+    "description": "",
+    "version": "1.0.0",
+    "dependencies": {
+        "game": ""
+    }
+}

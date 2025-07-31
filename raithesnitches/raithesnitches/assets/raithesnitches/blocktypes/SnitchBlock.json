@@ -1,0 +1,63 @@
+﻿{
+  "code": "snitchblock",
+  "class": "BlockSnitch",
+  "entityClass": "BESnitch",
+  "behaviors": [
+    { "name": "Lockable" }
+  ],
+  "variantgroups": [
+    {
+      "code": "metal",
+      "states": [ "lead", "molybdochalkos"
+      ]
+    },
+    {
+      "code": "accentmetal",
+      "states": [ "copper", "tinbronze", "bismuthbronze", "blackbronze", "iron", "steel" ]
+    }
+  ],  
+  "blockmaterial": "Metal",
+  "creativeinventory": {
+    "general": [ "*" ]
+  },
+  "replaceable": 300,
+  "resistanceByType": {
+    "*-lead-copper": 8,
+    "*-lead-tinbronze": 13,
+    "*-lead-bismuthbronze": 13,
+    "*-lead-blackbronze": 15,
+    "*-lead-iron": 20,
+    "*-lead-steel": 25,
+
+    "*-molybdochalkos-copper": 6,
+    "*-Molybdochalkos-tinbronze": 11,
+    "*-molybdochalkos-bismuthbronze": 11,
+    "*-molybdochalkos-blackbronze": 13,
+    "*-molybdochalkos-iron": 18,
+    "*-molybdochalkos-steel": 22
+
+  },
+  "lightAbsorption": 1,
+
+  "shape": {
+    "base": "game:block/devastation/machinery/miscmedium2"
+  },
+
+  "textures": {
+      "platinum": { "base": "game:block/metal/sheet-plain/silver1" },
+      "lead1" : { "base": "game:block/metal/sheet/{metal}1" },
+      "tinbronze12": { "base": "game:block/metal/sheet-plain/{accentmetal}1" }
+  },
+  "sidesolid": {
+    "all": false    
+  },
+  "sideopaque": {
+    "all": false
+  },
+  "sounds": {
+    "place": "game:block/chute",
+    "break": "game:block/chute",
+    "hit": "game:block/chute",
+    "walk": "game:walk/stone"
+  }
+}
