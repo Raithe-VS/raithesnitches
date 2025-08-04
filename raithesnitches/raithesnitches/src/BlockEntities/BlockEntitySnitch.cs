@@ -8,6 +8,7 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
+using raithesnitches.src.Constants;
 
 
 namespace raithesnitches.src.BlockEntities
@@ -22,6 +23,7 @@ namespace raithesnitches.src.BlockEntities
         public int MaxPaperLog { get; private set; }
         public int MaxBookLog { get; private set; }
 		public int MaxSnitchLog { get; private set; }
+		public float SnitchDownloadTime { get; private set; }
         public bool Sneakable { get; private set; }
         public string CurrentOwnerUID { get; private set; }
 		       
@@ -98,14 +100,15 @@ namespace raithesnitches.src.BlockEntities
 			reinforceMod = Api.ModLoader.GetModSystem<ModSystemBlockReinforcement>();
 
 			Radius = config.snitchRadius;
-			VertRange = config.snitchVert;
+			VertRange = config.snitchVerticalRange;
 
 			Sneakable = config.snitchSneakable;
 			TrueSightRange = Sneakable == true ? (int)(Radius * config.snitchTruesightRange) : Radius;
 
 			MaxBookLog = config.maxBookLog;
 			MaxPaperLog = config.maxPaperLog;
-			MaxSnitchLog = config.maxSnitchLog;
+			MaxSnitchLog = config.snitchMaxLog;
+			SnitchDownloadTime = config.snitchDownloadTime;
 
 			if (api.Side == EnumAppSide.Server && Activated)
 			{
@@ -178,38 +181,93 @@ namespace raithesnitches.src.BlockEntities
 
 		}
 
-		public bool OnInteract(IPlayer byPlayer)
+		public bool OnInteract(IPlayer byPlayer, float secondsUsed)
 		{
-			if (Api.Side == EnumAppSide.Server && byPlayer.Entity.Controls.ShiftKey && TryActivate())
+			if (!Activated && Api.Side == EnumAppSide.Server && byPlayer.Entity.Controls.ShiftKey && TryActivate())
 			{
 				CurrentOwnerUID = byPlayer.PlayerUID;				
 				MarkDirty();
 				return false;
 			};			
+			
 
-			if (Api.Side == EnumAppSide.Server && byPlayer.Entity.Controls.CtrlKey)
+			if (Activated && byPlayer.Entity.Controls.CtrlKey)
 			{
-				string error = ""; 
-				if (TryWriteViolations(byPlayer, ref error))
+				string error = "";		
+
+				if (CanWriteViolations(byPlayer, ref error))
 				{
-					MarkDirty();
+					if(secondsUsed < SnitchDownloadTime)
+					{
+						if (Api.Side == EnumAppSide.Client && !byPlayer.Entity.AnimManager.IsAnimationActive(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION))
+						{
+							byPlayer.Entity.StartAnimation(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION);
+						}
+						return true;
+					} else
+					{
+                        if (Api.Side == EnumAppSide.Server)
+                        {
+                            WriteViolations(byPlayer);
+                            MarkDirty();
+							return false;
+                        } else
+						{
+							
+							return true;
+						}							
+                    }					
 				} else
 				{
-					(Api as ICoreServerAPI).SendIngameError(byPlayer as IServerPlayer, error);
+					(Api as ICoreServerAPI)?.SendIngameError(byPlayer as IServerPlayer, error);
+					return false;
 				}
 			}
 
 			return true;
 
 		}
-		// Maybe allow callback to allow the interact to happen after Book log is pulled
-		private bool TryWriteViolations(IPlayer byPlayer, ref string errorcode)
-		{
-			if(!HasPermission(byPlayer)) {
-				errorcode = "You do not have permission to use this snitch, activity logged!";
-				return false;
-			}
 
+		private bool CanWriteViolations(IPlayer byPlayer, ref string errorcode)
+		{
+            if (!HasPermission(byPlayer))
+            {
+                errorcode = "You do not have permission to use this snitch, activity logged!";
+                return false;
+            }
+
+            ItemSlot bookSlot = byPlayer.Entity.ActiveHandItemSlot;
+            ItemSlot penSlot = byPlayer.Entity.LeftHandItemSlot;
+            if (!(bookSlot.Itemstack?.Item is ItemBook))
+            {
+                errorcode = "You need something to write in! Try a book or a piece of parchment!";
+                return false;
+            }
+
+            if (penSlot.Empty || !(penSlot.Itemstack.Class == EnumItemClass.Item))
+            {
+                errorcode = "You need something to write with in your offhand! Try an inkquill!";
+                return false;
+            }
+            if (!(penSlot.Itemstack.Item.Attributes["writingTool"].Exists) || penSlot.Itemstack.Item.Attributes["writingTool"].AsBool() == false)
+            {
+                errorcode = "You need something to write with in your offhand! Try an inkquill!";
+                return false;
+            }
+
+            //if(bookSlot.Itemstack.Attributes.GetString("signedbyUID") != snitchPlayer.PlayerUID)
+            //{
+            //	errorcode = "This writing media has been bound to another Snitch";
+            //	return false;
+            //}
+
+            return true;
+		}
+
+
+		// Maybe allow callback to allow the interact to happen after Book log is pulled
+		private void WriteViolations(IPlayer byPlayer)
+		{	
 			snitchPlayer = new SnitchPlayer()
 			{
 				playerName = "Snitch_" + Pos.ToLocalPosition(Api).ToString(),
@@ -218,29 +276,9 @@ namespace raithesnitches.src.BlockEntities
 			};
 
 			ItemSlot bookSlot = byPlayer.Entity.ActiveHandItemSlot;
-			ItemSlot penSlot = byPlayer.Entity.LeftHandItemSlot;
-			if (!(bookSlot.Itemstack?.Item is ItemBook))
-			{
-				errorcode = "You need something to write in! Try a book or a piece of parchment!";
-				return false;
-			}
+			ItemSlot penSlot = byPlayer.Entity.LeftHandItemSlot;			
 
-			if (penSlot.Empty || !(penSlot.Itemstack.Class == EnumItemClass.Item))
-			{
-				errorcode = "You need something to write with in your offhand! Try an inkquill!";
-				return false;
-			}
-			if (!(penSlot.Itemstack.Item.Attributes["writingTool"].Exists) || penSlot.Itemstack.Item.Attributes["writingTool"].AsBool() == false)
-			{
-				errorcode = "You need something to write with in your offhand! Try an inkquill!";
-				return false;
-			}
-
-			//if(bookSlot.Itemstack.Attributes.GetString("signedbyUID") != snitchPlayer.PlayerUID)
-			//{
-			//	errorcode = "This writing media has been bound to another Snitch";
-			//	return false;
-			//}
+			
 
 			bookMod.BeginEdit(snitchPlayer, bookSlot);
 
@@ -250,23 +288,19 @@ namespace raithesnitches.src.BlockEntities
 
 			if (bookSlot.Itemstack.Collectible.Code.ToString().Contains("parchment")) maxLogSize = MaxPaperLog;
 			if (bookSlot.Itemstack.Collectible.Code.ToString().Contains("book")) maxLogSize = MaxBookLog;
-
+						
 			var log = violationLogger.GetViolations(maxLogSize, this);
 
-			int tempCount = log.Count - 1;
-			//int day = 0;
+			int tempCount = log.Count - 1;			
 
 			for (int i = 0; (i <= maxLogSize && i <= tempCount); i++)
 			{
 				SnitchViolation violation = log.Dequeue();				
 
 				text += (violation.LogbookFormat(Api) + "\n");
-			}
+			}			
 
-			bookMod.EndEdit(snitchPlayer, text, title, true);
-			
-
-			return true;
+			bookMod.EndEdit(snitchPlayer, text, title, true);		
 		}		
 
 		public void AddViolation(SnitchViolation violation)

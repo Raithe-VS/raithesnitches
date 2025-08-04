@@ -4,9 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.API.Util;
+using Vintagestory.Common;
 
 namespace raithesnitches.src.Violations
 {
@@ -34,9 +36,9 @@ namespace raithesnitches.src.Violations
 	public class SnitchChunkData
 	{
 		[ProtoMember(1)]
-		public Dictionary<BlockPos, Queue<SnitchViolation>> SnitchData;
+		public Dictionary<BlockPos, Queue<SnitchViolation>> SnitchData;        
 
-		public SnitchChunkData(byte[] bytes)
+        public SnitchChunkData(byte[] bytes)
 		{
 			SnitchData = Deserialize(bytes);
 		}
@@ -87,14 +89,17 @@ namespace raithesnitches.src.Violations
 
 	public class ViolationLogger
 	{
-		//private BlockEntitySnitch beSnitch;
-		private readonly ConditionalWeakTable<IServerChunk, SnitchChunkData> _SnitchChunks = new();
+        private readonly DeduplicationFilter deduplicationFilter;
+        
+        private readonly ConditionalWeakTable<IServerChunk, SnitchChunkData> _SnitchChunks = new();
 		ICoreServerAPI sapi;
 
 		public ViolationLogger(ICoreServerAPI sapi)
-		{			
-			this.sapi = sapi;
-		}
+		{
+            this.sapi = sapi;
+            this.deduplicationFilter = new DeduplicationFilter(sapi);
+			sapi.Event.RegisterGameTickListener(deduplicationFilter.Cleanup, 30000, 10000);
+        }
 
 		public Queue<SnitchViolation> GetViolations(int count, BlockEntitySnitch beSnitch)
 		{
@@ -122,11 +127,17 @@ namespace raithesnitches.src.Violations
 
 			return tempViolations;
 
-		}
+		}        
 
-		public void AddViolation(SnitchViolation violation, BlockEntitySnitch beSnitch)
+        public void AddViolation(SnitchViolation violation, BlockEntitySnitch beSnitch)
 		{
-			IServerChunk chunk = sapi.WorldManager.GetChunk(beSnitch.Pos);
+            if (deduplicationFilter.ShouldSuppress(violation))
+            {
+                sapi.Logger.VerboseDebug($"Suppressed {violation.Type} by {violation.playerUID} at {violation.position}");
+                return;
+            }
+
+            IServerChunk chunk = sapi.WorldManager.GetChunk(beSnitch.Pos);
 
 			if (!_SnitchChunks.TryGetValue(chunk, out SnitchChunkData chunkData))
 			{
@@ -134,17 +145,17 @@ namespace raithesnitches.src.Violations
 				if (chunkData.SnitchData == null)
 				{
 					chunkData.SnitchData = new Dictionary<BlockPos, Queue<SnitchViolation>>();
-				}
+				}				
 			}
 
 			if (!chunkData.SnitchData.TryGetValue(beSnitch.Pos, out Queue<SnitchViolation> violations))
 			{
 				if (violations == null) { violations = new(); }
-			}
+			}            
 
-			if (violations.Count == beSnitch.MaxSnitchLog) { violations.Dequeue(); }
+            if (violations.Count == beSnitch.MaxSnitchLog) { violations.Dequeue(); }
 			violations.Enqueue(violation);
-			beSnitch.violationCount = violations.Count;
+            beSnitch.violationCount = violations.Count;
 			chunkData.SnitchData[beSnitch.Pos] = violations;
 
 			chunk.MarkModified();
@@ -202,9 +213,7 @@ namespace raithesnitches.src.Violations
 				chunk.SetServerModdata("Snitches", chunkData.Serialize());
 			};
 			return chunkData;
-		}
+		}	        
 
-
-
-	}
+    }
 }

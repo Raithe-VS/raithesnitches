@@ -19,16 +19,18 @@ namespace raithesnitches.src.Config
         [JsonProperty]
         public int snitchRadius = 16;
         [JsonProperty]
-        public int snitchVert = 16;
+        public int snitchVerticalRange = 16;
         [JsonProperty]
         public float snitchTruesightRange = 0.5f;
         [JsonProperty]
-        public int maxSnitchLog = 35;
+        public int snitchMaxLog = 2000;
 
         [JsonProperty]
         public int maxBookLog = 100;
         [JsonProperty]
         public int maxPaperLog = 10;
+        [JsonProperty]
+        public float snitchDownloadTime = 2.0f;
 
         public SnitchesServerConfig(ICoreAPI api)
         {

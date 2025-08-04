@@ -1,0 +1,70 @@
+﻿[
+  {
+    "ingredientPattern": "LML,GTG,LML",
+    "ingredients": {
+      "L": {
+        "type": "item",
+        "code": "game:ingot-lead"
+      },
+      "M": {
+        "type": "item",
+        "code": "game:metalplate-*",
+        "name": "accent",
+        "allowedVariants": [ "copper", "tinbronze", "bismuthbronze", "blackbronze", "iron", "steel" ]
+      },
+      "G": {
+        "type": "block",
+        "code": "game:glassslab-plain-*"
+      },
+      "T": {
+        "type": "item",
+        "code": "game:gear-temporal"
+      }
+
+    },
+    "width": 3,
+    "height": 3,
+    "name": "Lead Snitch",
+    "output": {
+      "type": "block",
+      "code": "snitchblock-lead-{accent}",
+      "quantity": 1
+    }
+
+  },
+
+  {
+    "ingredientPattern": "LML,GTG,LML",
+    "ingredients": {
+      "L": {
+        "type": "item",
+        "code": "game:ingot-molybdochalkos"
+      },
+      "M": {
+        "type": "item",
+        "code": "game:metalplate-*",
+        "name": "accent",
+        "allowedVariants": [ "copper", "tinbronze", "bismuthbronze", "blackbronze", "iron", "steel" ]
+      },
+      "G": {
+        "type": "block",
+        "code": "game:glassslab-plain-*"
+      },
+      "T": {
+        "type": "item",
+        "code": "game:gear-temporal"
+      }
+
+    },
+    "width": 3,
+    "height": 3,
+    "name": "Lead Snitch",
+    "output": {
+      "type": "block",
+      "code": "snitchblock-molybdochalkos-{accent}",
+      "quantity": 1
+    }
+
+  }
+
+]

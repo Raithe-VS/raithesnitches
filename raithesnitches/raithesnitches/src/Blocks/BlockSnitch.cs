@@ -1,4 +1,5 @@
 ﻿using raithesnitches.src.BlockEntities;
+using raithesnitches.src.Constants;
 using System.Collections.Generic;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -22,9 +23,30 @@ namespace raithesnitches.src.Blocks
 		public override bool OnBlockInteractStep(float secondsUsed, IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
 		{
 			BlockEntitySnitch snitch = world.BlockAccessor.GetBlockEntity(blockSel.Position) as BlockEntitySnitch;
+            if (snitch == null) return false;
             
-			return snitch?.OnInteract(byPlayer) == false;
-		}        
+			return snitch.OnInteract(byPlayer, secondsUsed);
+		}
+
+        public override void OnBlockInteractStop(float secondsUsed, IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
+        {
+            base.OnBlockInteractStop(secondsUsed, world, byPlayer, blockSel);
+
+            if (byPlayer.Entity.AnimManager.IsAnimationActive(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION))
+            {
+                byPlayer.Entity.StopAnimation(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION);
+            }
+        }
+
+        public override bool OnBlockInteractCancel(float secondsUsed, IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel, EnumItemUseCancelReason cancelReason)
+        {
+            if (byPlayer.Entity.AnimManager.IsAnimationActive(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION))
+            {
+                byPlayer.Entity.StopAnimation(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION);
+            }
+
+            return base.OnBlockInteractCancel(secondsUsed, world, byPlayer, blockSel, cancelReason);
+        }
 
 		public override void OnLoaded(ICoreAPI api)
         {

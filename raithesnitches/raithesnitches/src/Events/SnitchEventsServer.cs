@@ -140,6 +140,7 @@ namespace raithesnitches.src.Events
 		/// <param name="damageSource"></param>
 		public static void OnEntityDeath(Entity entity, DamageSource damageSource)
 		{		
+			
 
 			if (damageSource == null) return;
 			if (damageSource.GetCauseEntity() == null || !(damageSource.GetCauseEntity() is EntityPlayer)) return;
