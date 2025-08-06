@@ -1,473 +1,428 @@
 ﻿using raithesnitches.src.Config;
+using raithesnitches.src.Constants;
 using raithesnitches.src.Players;
+using raithesnitches.src.Violations;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using raithesnitches.src.Violations;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
-using raithesnitches.src.Constants;
 
 
 namespace raithesnitches.src.BlockEntities
 {
+    using raithesnitches.src.GUI;
+
+    /// <summary>
+    /// A block entity that monitors nearby Seraph activity and logs violations such as trespassing, block interaction,
+    /// or item theft. Requires a writing medium and writing tool to extract logs. Integrates with reinforcement groups
+    /// and editable book systems. Supports activation, tracking, and log serialization.
+    /// </summary>
+    using System;
+    using Vintagestory.API.Client;
+    using Vintagestory.API.Util;
+
     public class BlockEntitySnitch : BlockEntity
     {
-        SnitchPlayer snitchPlayer;
-
+        // --- Configuration ---
         public int Radius { get; private set; }
         public int VertRange { get; private set; }
         public int TrueSightRange { get; private set; }
         public int MaxPaperLog { get; private set; }
         public int MaxBookLog { get; private set; }
-		public int MaxSnitchLog { get; private set; }
-		public float SnitchDownloadTime { get; private set; }
+        public int MaxSnitchLog { get; private set; }
+        public float SnitchDownloadTime { get; private set; }
         public bool Sneakable { get; private set; }
+
+        // --- Ownership ---
         public string CurrentOwnerUID { get; private set; }
-		       
-		public int violationCount { get; set; }
+        public int violationCount { get; set; }
+        public bool Activated { get; private set; } = false;
 
-        private List<string> playersPinged;
-        private List<string> playersTracked;
+        // --- Player Tracking ---
+        private List<string> playersTracked = new();
+        private List<string> playersPinged = new();
 
+        // --- Mod Systems ---
         private SnitchesModSystem snitchMod;
         private ModSystemEditableBook bookMod;
         private ModSystemBlockReinforcement reinforceMod;
+        private ViolationLogger violationLogger;
 
-        long? OnPlayerEnterListenerID;
+        private long? OnPlayerEnterListenerID;
 
-		public bool Activated { get; private set; } = false;
+        private SnitchPlayer snitchPlayer;
+
+        // --- Violation Settings ---
+        private EnumViolationType enabledViolationFlags = (EnumViolationType)(-1); // All flags on by default
+
+        protected GuiSnitch clientDialog;
 
         private SnitchesServerConfig config => SnitchesModSystem.config;
 
-		ViolationLogger violationLogger;
+        public override void Initialize(ICoreAPI api)
+        {
+            base.Initialize(api);
+            InitializeMods(api);
+            InitializeConfig();
+            if (api.Side == EnumAppSide.Server && Activated) TryActivate();
+        }
 
-		public override void FromTreeAttributes(ITreeAttribute tree, IWorldAccessor worldAccessForResolve)
-		{
-			base.FromTreeAttributes(tree, worldAccessForResolve);
-		    Activated = tree.GetBool("activated");
-			
-			CurrentOwnerUID = tree.GetString("currentOwnerUID");				
+        private void InitializeMods(ICoreAPI api)
+        {
+            snitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
+            bookMod = api.ModLoader.GetModSystem<ModSystemEditableBook>();
+            reinforceMod = api.ModLoader.GetModSystem<ModSystemBlockReinforcement>();
+            if (api.Side == EnumAppSide.Server) violationLogger = snitchMod.violationLogger;
+        }
 
-			int playersTrackedCount = tree.GetInt("playersTrackedCount");
-						
-			var playersTrackedTree = tree.GetOrAddTreeAttribute("playersTracked");
+        private void InitializeConfig()
+        {
+            Radius = config.snitchRadius;
+            VertRange = config.snitchVerticalRange;
+            Sneakable = config.snitchSneakable;
+            TrueSightRange = Sneakable ? (int)(Radius * config.snitchTruesightRange) : Radius;
+            MaxBookLog = config.maxBookLog;
+            MaxPaperLog = config.maxPaperLog;
+            MaxSnitchLog = config.snitchMaxLog;
+            SnitchDownloadTime = config.snitchDownloadTime;
+        }
 
-			violationCount = tree.GetInt("violationCount");
-					
-			if (Activated)
-			{
-				playersTracked = new List<string>();
+        public override void FromTreeAttributes(ITreeAttribute tree, IWorldAccessor worldAccessForResolve)
+        {
+            base.FromTreeAttributes(tree, worldAccessForResolve);
+            Activated = tree.GetBool("activated");
+            CurrentOwnerUID = tree.GetString("currentOwnerUID");
+            violationCount = tree.GetInt("violationCount");
+            enabledViolationFlags = (EnumViolationType)tree.GetInt("enabledViolationFlags");
 
-				for (int counter = 0; counter < playersTrackedCount; counter++)
-				{
-					playersTracked.Add(playersTrackedTree.GetString("player" + counter));
-				}
+            playersTracked.Clear();
+            int count = tree.GetInt("playersTrackedCount");
+            var trackedTree = tree.GetTreeAttribute("playersTracked");
+            if (trackedTree != null)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    playersTracked.Add(trackedTree.GetString("player" + i));
+                }
+            }
+        }
 
-			}
-		}
+        public override void ToTreeAttributes(ITreeAttribute tree)
+        {
+            base.ToTreeAttributes(tree);
+            tree.SetBool("activated", Activated);
+            tree.SetString("currentOwnerUID", CurrentOwnerUID);
+            tree.SetInt("violationCount", violationCount);
+            tree.SetInt("enabledViolationFlags", (int)enabledViolationFlags);
+            tree.SetInt("playersTrackedCount", playersTracked.Count);
 
-		public override void ToTreeAttributes(ITreeAttribute tree)
-		{
-			base.ToTreeAttributes(tree);
-			tree.SetBool("activated", Activated);
-			tree.SetString("currentOwnerUID", CurrentOwnerUID);				
-			tree.SetInt("playersTrackedCount", playersTracked.Count);
-			tree.SetInt("violationCount", violationCount);
-			
-			var playersTrackedTree = tree.GetOrAddTreeAttribute("playersTracked");	
-			
-			if (Activated && playersTracked.Count > 0)
-			{
-				int counter = 0;
-				foreach (var p in playersTracked)
-				{
-					//ITreeAttribute player = playersTrackedTree.GetOrAddTreeAttribute("player" + counter.ToString());
-					playersTrackedTree.SetString("player" + counter, p);
-				}
+            if (Activated && playersTracked.Count > 0)
+            {
+                var trackedTree = tree.GetOrAddTreeAttribute("playersTracked");
+                for (int i = 0; i < playersTracked.Count; i++)
+                {
+                    trackedTree.SetString("player" + i, playersTracked[i]);
+                }
+            }
+        }
 
-			}
+        public bool OnInteract(IPlayer byPlayer, float secondsUsed)
+        {
+            if (!Activated && Api.Side == EnumAppSide.Server && byPlayer.Entity.Controls.ShiftKey)
+            {
+                CurrentOwnerUID = byPlayer.PlayerUID;
+                TryActivate();
+                MarkDirty();
+                return false;
+            }
 
-		}
+            if (Activated && byPlayer.Entity.Controls.CtrlKey)
+            {
+                return HandleLogWriting(byPlayer, secondsUsed);
+            }
 
-		public override void Initialize(ICoreAPI api)
-		{
-			base.Initialize(api);
-			snitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
-			bookMod = api.ModLoader.GetModSystem<ModSystemEditableBook>();
-			reinforceMod = Api.ModLoader.GetModSystem<ModSystemBlockReinforcement>();
+            if(Activated && Api.Side == EnumAppSide.Client && IsOwner(byPlayer) && byPlayer.Entity.Controls.ShiftKey) {
 
-			Radius = config.snitchRadius;
-			VertRange = config.snitchVerticalRange;
+                if (clientDialog != null)
+                {
+                    //clientDialog.TryClose();
+                    //clientDialog.Dispose();
+                    //clientDialog = null;
+                    return true;
+                }
 
-			Sneakable = config.snitchSneakable;
-			TrueSightRange = Sneakable == true ? (int)(Radius * config.snitchTruesightRange) : Radius;
+                clientDialog = new GuiSnitch(Pos, Api as ICoreClientAPI, enabledViolationFlags);
+                clientDialog.TryOpen();
+                clientDialog.OnClosed += () => {
+                    clientDialog?.Dispose(); clientDialog = null;
+                };
 
-			MaxBookLog = config.maxBookLog;
-			MaxPaperLog = config.maxPaperLog;
-			MaxSnitchLog = config.snitchMaxLog;
-			SnitchDownloadTime = config.snitchDownloadTime;
+            }
 
-			if (api.Side == EnumAppSide.Server && Activated)
-			{
-				TryActivate();
-			}
+            return true;
+        }
 
-			playersTracked = new List<string>();
+        private bool HandleLogWriting(IPlayer byPlayer, float secondsUsed)
+        {
+            if (!CanWriteViolations(byPlayer, out string error))
+            {
+                (Api as ICoreServerAPI)?.SendIngameError(byPlayer as IServerPlayer, error);
+                return false;
+            }
 
-			if (api.Side == EnumAppSide.Server)
-			{
-				violationLogger = snitchMod.violationLogger;
-			}
+            if (secondsUsed < SnitchDownloadTime)
+            {
+                if (Api.Side == EnumAppSide.Client)
+                {
+                    byPlayer.Entity.StartAnimation(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION);
+                }
+                return true;
+            }
 
-		}
-		public override void OnBlockUnloaded()
-		{
-			base.OnBlockUnloaded();
-			RemoveSnitchesFromTracker();
-		}
+            if (Api.Side == EnumAppSide.Server)
+            {
+                WriteViolationsToMedium(byPlayer);
+                MarkDirty();
+            }
 
-		public override void OnBlockRemoved()
-		{
-			if (Api.Side == EnumAppSide.Server)
-			{
-				violationLogger.ClearViolationChunkData(this);
-			}
-			RemoveSnitchesFromTracker();
-			base.OnBlockRemoved();						
-		}
+            return false;
+        }
 
-		//public override void OnBlockBroken(IPlayer byPlayer = null)
-		//{
-		//	base.OnBlockBroken(byPlayer);
-		//	RemoveSnitches();			
-		//}
+        private bool CanWriteViolations(IPlayer byPlayer, out string errorcode)
+        {
+            errorcode = string.Empty;
 
-		public override void OnBlockPlaced(ItemStack byItemStack = null)
-		{
-			base.OnBlockPlaced(byItemStack);
-			//if (Api.Side == EnumAppSide.Server)
-			//{
-			//	violationLogger.ClearViolationChunkData(this);
-			//}
-		}
-
-		public override void GetBlockInfo(IPlayer forPlayer, StringBuilder dsc)
-		{
-			base.GetBlockInfo(forPlayer, dsc);
-
-			if (Activated)
-			{
-				dsc.AppendLine("This Snitch is Activated! The watchful eye of Big Brother!");
-			}
-
-			if (IsOwner(forPlayer.PlayerUID))
-			{
-
-				dsc.AppendLine("Snitch_" + Pos.ToLocalPosition(Api).ToString());
-
-				foreach (string player in playersTracked)
-				{
-					if (player != null)
-					{
-						dsc.AppendLine(Api.World.PlayerByUid(player).PlayerName + " currently being tracked!");
-					}
-				}
-
-				dsc.AppendLine($"Current Violations: {violationCount} / {MaxSnitchLog} ");
-			}
-
-		}
-
-		public bool OnInteract(IPlayer byPlayer, float secondsUsed)
-		{
-			if (!Activated && Api.Side == EnumAppSide.Server && byPlayer.Entity.Controls.ShiftKey && TryActivate())
-			{
-				CurrentOwnerUID = byPlayer.PlayerUID;				
-				MarkDirty();
-				return false;
-			};			
-			
-
-			if (Activated && byPlayer.Entity.Controls.CtrlKey)
-			{
-				string error = "";		
-
-				if (CanWriteViolations(byPlayer, ref error))
-				{
-					if(secondsUsed < SnitchDownloadTime)
-					{
-						if (Api.Side == EnumAppSide.Client && !byPlayer.Entity.AnimManager.IsAnimationActive(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION))
-						{
-							byPlayer.Entity.StartAnimation(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION);
-						}
-						return true;
-					} else
-					{
-                        if (Api.Side == EnumAppSide.Server)
-                        {
-                            WriteViolations(byPlayer);
-                            MarkDirty();
-							return false;
-                        } else
-						{
-							
-							return true;
-						}							
-                    }					
-				} else
-				{
-					(Api as ICoreServerAPI)?.SendIngameError(byPlayer as IServerPlayer, error);
-					return false;
-				}
-			}
-
-			return true;
-
-		}
-
-		private bool CanWriteViolations(IPlayer byPlayer, ref string errorcode)
-		{
             if (!HasPermission(byPlayer))
             {
                 errorcode = "You do not have permission to use this snitch, activity logged!";
                 return false;
             }
 
-            ItemSlot bookSlot = byPlayer.Entity.ActiveHandItemSlot;
-            ItemSlot penSlot = byPlayer.Entity.LeftHandItemSlot;
-            if (!(bookSlot.Itemstack?.Item is ItemBook))
+            var bookSlot = byPlayer.Entity.ActiveHandItemSlot;
+            var penSlot = byPlayer.Entity.LeftHandItemSlot;
+
+            if (!(bookSlot?.Itemstack?.Item is ItemBook))
             {
                 errorcode = "You need something to write in! Try a book or a piece of parchment!";
                 return false;
             }
 
-            if (penSlot.Empty || !(penSlot.Itemstack.Class == EnumItemClass.Item))
+            if (penSlot?.Itemstack == null || !penSlot.Itemstack.Item.Attributes?["writingTool"]?.AsBool() == true)
             {
                 errorcode = "You need something to write with in your offhand! Try an inkquill!";
                 return false;
             }
-            if (!(penSlot.Itemstack.Item.Attributes["writingTool"].Exists) || penSlot.Itemstack.Item.Attributes["writingTool"].AsBool() == false)
-            {
-                errorcode = "You need something to write with in your offhand! Try an inkquill!";
-                return false;
-            }
-
-            //if(bookSlot.Itemstack.Attributes.GetString("signedbyUID") != snitchPlayer.PlayerUID)
-            //{
-            //	errorcode = "This writing media has been bound to another Snitch";
-            //	return false;
-            //}
 
             return true;
-		}
+        }
+
+        private void WriteViolationsToMedium(IPlayer byPlayer)
+        {
+            snitchPlayer = new SnitchPlayer
+            {
+                playerName = "Snitch_" + Pos.ToLocalPosition(Api),
+                playerUID = "Snitch_" + Pos.ToLocalPosition(Api),
+                entityPlayer = byPlayer.Entity
+            };
+
+            var bookSlot = byPlayer.Entity.ActiveHandItemSlot;
+            bookMod.BeginEdit(snitchPlayer, bookSlot);
+
+            string title = "Violations pulled on " + Api.World.Calendar.PrettyDate();
+            int maxLogSize = bookSlot.Itemstack.Collectible.Code.ToString().Contains("parchment") ? MaxPaperLog : MaxBookLog;
+            var log = violationLogger.GetViolations(maxLogSize, this);
+
+            StringBuilder text = new StringBuilder();
+            int writtenCount = 0;
+            while (log.Count > 0 && writtenCount < maxLogSize)
+            {
+                text.AppendLine(log.Dequeue().LogbookFormat(Api));
+                writtenCount++;
+            }
+
+            bookMod.EndEdit(snitchPlayer, text.ToString(), title, true);
+        }
+
+        private void OnPingPlayers(float dt)
+        {
+            playersPinged.Clear();
+            var players = Api.World.GetPlayersAround(Pos.ToVec3d(), Radius, VertRange, ShouldPingPlayer);
+
+            foreach (var player in players)
+            {
+                TrackPlayer(player);
+                playersPinged.Add(player.PlayerUID);
+            }
+
+            foreach (var playerUID in playersTracked.ToList())
+            {
+                if (!playersPinged.Contains(playerUID))
+                {
+                    UntrackPlayer(playerUID);
+                }
+            }
+
+            if (Api.Side == EnumAppSide.Server)
+            {
+                MarkDirty();
+            }
+        }
+
+        private void TrackPlayer(IPlayer player)
+        {
+            if (!snitchMod.trackedPlayers.TryGetValue(player.PlayerUID, out var snitches))
+            {
+                snitches = new List<BlockEntitySnitch>();
+                snitchMod.trackedPlayers[player.PlayerUID] = snitches;
+            }
+
+            if (!snitches.Contains(this))
+            {
+                snitches.Add(this);
+            }
+
+            if (!playersTracked.Contains(player.PlayerUID))
+            {
+                playersTracked.Add(player.PlayerUID);
+                if (Api.Side == EnumAppSide.Server)
+                {
+                    AddViolation(new SnitchViolation(EnumViolationType.Trespassed, player as IServerPlayer, player.Entity.Pos.AsBlockPos, Api.World.Calendar.PrettyDate(), Api.World.Calendar.ElapsedDays, Api.World.Calendar.ElapsedSeconds, Api.World.Calendar.Year));
+                }
+            }
+        }
+
+        private void UntrackPlayer(string playerUID)
+        {
+            if (snitchMod.trackedPlayers.TryGetValue(playerUID, out var snitches))
+            {
+                var player = Api.World.PlayerByUid(playerUID);
+                AddViolation(new SnitchViolation(EnumViolationType.Escaped, player as IServerPlayer, player.Entity.Pos.AsBlockPos, Api.World.Calendar.PrettyDate(), Api.World.Calendar.ElapsedDays, Api.World.Calendar.ElapsedSeconds, Api.World.Calendar.Year));
+                snitches.Remove(this);
+            }
+
+            playersTracked.Remove(playerUID);
+        }
+
+        private bool ShouldPingPlayer(IPlayer player)
+        {
+            if (!IsOwner(player)) return false;
+            if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
+            return true;
+        }
+
+        
+
+        private bool TryActivate()
+        {
+            if (OnPlayerEnterListenerID == null)
+            {
+                OnPlayerEnterListenerID = RegisterGameTickListener(OnPingPlayers, 500);
+            }
+
+            if (Activated) return false;
+            Activated = true;
+            MarkDirty();
+            return true;
+        }
+
+        public void AddViolation(SnitchViolation violation)
+        {
+            // Check if the violation type is enabled
+            if (!IsViolationTypeEnabled(violation.Type)) return;
+            violationLogger.AddViolation(violation, this);
+        }
+
+        /// <summary>
+        /// Enables or disables specific violation types using bitwise flags.
+        /// </summary>
+        public void SetEnabledViolationFlags(EnumViolationType flags)
+        {
+            enabledViolationFlags = flags;
+        }
+
+        /// <summary>
+        /// Checks whether the given violation type is currently enabled.
+        /// </summary>
+        private bool IsViolationTypeEnabled(EnumViolationType type)
+        {
+            return (enabledViolationFlags & type) == type;
+        }
+
+        public override void OnBlockRemoved()
+        {
+            if (Api.Side == EnumAppSide.Server)
+            {
+                violationLogger.ClearViolationChunkData(this);
+            }
+            RemoveSnitchesFromTracker();
+            base.OnBlockRemoved();
+        }
+
+        public override void OnBlockUnloaded()
+        {
+            base.OnBlockUnloaded();
+            RemoveSnitchesFromTracker();
+        }
+
+        public override void GetBlockInfo(IPlayer forPlayer, StringBuilder dsc)
+        {
+            base.GetBlockInfo(forPlayer, dsc);
+            if (!HasPermission(forPlayer)) return;
+
+            if (Activated)
+            {
+                dsc.AppendLine("This Snitch is Activated!");
+                dsc.AppendLine(!Sneakable
+                    ? $"Radius: {Radius}   Vertical Range: {VertRange}"
+                    : $"Radius: {TrueSightRange} / {Radius}   Vertical Range: {VertRange}");
+            }
+
+            dsc.AppendLine("Snitch_" + Pos.ToLocalPosition(Api));
+            foreach (string player in playersTracked)
+            {
+                var name = Api.World.PlayerByUid(player)?.PlayerName;
+                if (name != null)
+                {
+                    dsc.AppendLine($"{name} currently being tracked!");
+                }
+            }
+            dsc.AppendLine($"Current Violations: {violationCount} / {MaxSnitchLog}");
+        }
+
+        private void RemoveSnitchesFromTracker()
+        {
+            foreach (var snitchList in snitchMod.trackedPlayers.Values)
+            {
+                snitchList.Remove(this);
+            }
+        }
+
+        private bool HasPermission(IPlayer player)
+        {
+            if (IsOwner(player)) return true;
+            return reinforceMod.IsReinforced(Pos) && player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null;
+        }
+
+        private bool IsOwner(IPlayer player)
+        {
+            return player.PlayerUID == CurrentOwnerUID;
+        }
+
+        public override void OnReceivedClientPacket(IPlayer fromPlayer, int packetid, byte[] data)
+        {
+            base.OnReceivedClientPacket(fromPlayer, packetid, data);
+
+            if (packetid == 42) { 
+                var packet = SerializerUtil.Deserialize<SnitchFlagUpdatePacket>(data);                                
+                enabledViolationFlags = packet.Flags;
+                
+            }
+        }
+    }
 
 
-		// Maybe allow callback to allow the interact to happen after Book log is pulled
-		private void WriteViolations(IPlayer byPlayer)
-		{	
-			snitchPlayer = new SnitchPlayer()
-			{
-				playerName = "Snitch_" + Pos.ToLocalPosition(Api).ToString(),
-				playerUID = "Snitch_" + Pos.ToLocalPosition(Api).ToString(),
-				entityPlayer = byPlayer.Entity
-			};
-
-			ItemSlot bookSlot = byPlayer.Entity.ActiveHandItemSlot;
-			ItemSlot penSlot = byPlayer.Entity.LeftHandItemSlot;			
-
-			
-
-			bookMod.BeginEdit(snitchPlayer, bookSlot);
-
-			string text = "";
-			string title = "Violations pulled on " + Api.World.Calendar.PrettyDate();
-			int maxLogSize = 0;
-
-			if (bookSlot.Itemstack.Collectible.Code.ToString().Contains("parchment")) maxLogSize = MaxPaperLog;
-			if (bookSlot.Itemstack.Collectible.Code.ToString().Contains("book")) maxLogSize = MaxBookLog;
-						
-			var log = violationLogger.GetViolations(maxLogSize, this);
-
-			int tempCount = log.Count - 1;			
-
-			for (int i = 0; (i <= maxLogSize && i <= tempCount); i++)
-			{
-				SnitchViolation violation = log.Dequeue();				
-
-				text += (violation.LogbookFormat(Api) + "\n");
-			}			
-
-			bookMod.EndEdit(snitchPlayer, text, title, true);		
-		}		
-
-		public void AddViolation(SnitchViolation violation)
-		{
-			violationLogger.AddViolation(violation, this);
-		}
-
-		private bool TryActivate()
-		{
-			if (OnPlayerEnterListenerID == null)
-			{
-				OnPlayerEnterListenerID = RegisterGameTickListener(OnPingPlayers, 500);
-			}
-			if (Activated)
-			{
-				MarkDirty();
-				return false;
-			}
-
-			Activated = true;
-			MarkDirty();
-
-			return true;
-		}
-
-		private void OnPingPlayers(float obj)
-		{
-			// Gets all potential players to ping
-			List<IPlayer> players = Api.World.GetPlayersAround(Pos.ToVec3d(), Radius, VertRange, (IPlayer player) =>
-			{
-				return ShouldPingPlayer(player);
-
-			}).ToList<IPlayer>();
-			playersPinged = new List<string>();
-
-			// For each player that should be pinged, we add that player to the tracked players list along with its Block Entity
-			// If that player was not already being tracked by a snitch, a Tresspass Violation is added
-			foreach (IPlayer player in players)
-			{
-
-				if (snitchMod.trackedPlayers.TryGetValue(player.PlayerUID, out List<BlockEntitySnitch> snitches))
-				{
-					if (!snitches.Contains(this))
-					{
-						snitches.Add(this);
-					}
-				}
-				else
-				{
-					var sn = new List<BlockEntitySnitch>();
-					sn.Add(this);
-					snitchMod.trackedPlayers.Add(player.PlayerUID, sn);
-				}
-				playersPinged.Add(player.PlayerUID);
-
-				if (!playersTracked.Contains(player.PlayerUID))
-				{
-					playersTracked.Add(player.PlayerUID);
-					
-					if (Api.Side == EnumAppSide.Server)
-					{
-						string prettyDate = Api.World.Calendar.PrettyDate();
-						double day = Api.World.Calendar.ElapsedDays;
-						long time = Api.World.Calendar.ElapsedSeconds;
-						int year = Api.World.Calendar.Year;
-						AddViolation(new SnitchViolation(EnumViolationType.Trespassed, player as IServerPlayer, player.Entity.Pos.AsBlockPos, prettyDate, day, time, year));
-					}
-				}
-			}
-
-			// Now we compare the players tracked list with players that should be pinged list
-			// For each player that is in the players tracked list and not in the pinged list, we add an escape violation
-			List<string> ps = new List<string>();
-
-			foreach (string playerUID in playersTracked)
-			{
-				if (playersPinged.Contains(playerUID)) { continue; }
-
-				if (snitchMod.trackedPlayers.TryGetValue(playerUID, out List<BlockEntitySnitch> snitches))
-				{
-					var player = Api.World.PlayerByUid(playerUID);
-
-					string prettyDate = Api.World.Calendar.PrettyDate();
-					double day = Api.World.Calendar.ElapsedDays;
-					long time = Api.World.Calendar.ElapsedSeconds;
-					int year = Api.World.Calendar.Year;
-					AddViolation(new SnitchViolation(EnumViolationType.Escaped, player as IServerPlayer, player.Entity.Pos.AsBlockPos, prettyDate, day, time, year));
-
-					snitches.Remove(this);
-				}
-				ps.Add(playerUID);
-			}
-
-			foreach (string playerUID in ps)
-			{
-				playersTracked.Remove(playerUID);
-			}
-
-			if (Api.Side == EnumAppSide.Server)
-			{
-				MarkDirty();
-			}
-
-		}
-
-		private bool ShouldPingPlayer(IPlayer player)
-		{
-			if (!IsOwner(player)) return false;
-
-			//if (reinforceMod.IsReinforced(Pos))
-			//{
-			//	if (player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null)
-			//	{
-			//		return false;
-			//	}
-			//}
-
-			if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
-
-			return true;
-		}
-
-		private void RemoveSnitchesFromTracker()
-		{
-			foreach (List<BlockEntitySnitch> snitches in snitchMod.trackedPlayers.Values)
-			{
-				if (snitches.Contains(this))
-				{
-					snitches.Remove(this);
-				}
-			}
-		}
-
-		private bool IsOwner(string playerUID)
-		{
-			if (playerUID == CurrentOwnerUID)
-			{
-				return true;
-			}
-			else return false;
-		}
-
-		private bool IsOwner(IPlayer player)
-		{
-			if(player.PlayerUID == CurrentOwnerUID)
-			{
-				return true;
-			}
-			else return false;
-
-		}
-
-		private bool HasPermission(IPlayer player)
-		{
-			if(IsOwner(player)) { return true; }
-			
-			//PlayerGroupMembership group;
-
-			if(reinforceMod.IsReinforced(Pos) && player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null)
-			{
-				return true;
-			}
-
-
-			return false;
-		}
-
-		
-	}
 }

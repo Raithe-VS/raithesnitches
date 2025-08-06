@@ -15,7 +15,7 @@ namespace raithesnitches.src.Violations
         EnumViolationType.BlockPlaced,        
         EnumViolationType.ReinforcementPlaced,
         EnumViolationType.EntityKilled,       
-        EnumViolationType.EntitySpawned,
+        EnumViolationType.PlayerSpawned,
         EnumViolationType.CollectibleTaken
     };
 
@@ -103,10 +103,8 @@ namespace raithesnitches.src.Violations
 			    EnumViolationType.EntityInteracted => $"interacted with {EntityName ?? "unknown entity"}",
 				EnumViolationType.EntityHit => $"hit {EntityName ?? "unknown entity"}",
 				EnumViolationType.EntityKilled => $"killed {EntityName ?? "unknown entity"}",
-                EnumViolationType.EntitySpawned => $"spawned {EntityName ?? "unknown entity"}",
-				EnumViolationType.CollectibleTaken => $"took {(quantity > 0 ? quantity.ToString() : "")} {CollectibleName ?? "unknown collectible"}",
-                EnumViolationType.CollectiblePickedUp => $"picked up {CollectibleName ?? "unknown collectible"}",
-				EnumViolationType.CollectibleDropped => $"dropped {CollectibleName ?? "unknown collectible"}",
+                EnumViolationType.PlayerSpawned => $"spawned",
+				EnumViolationType.CollectibleTaken => $"took {(quantity > 0 ? quantity.ToString() : "")} {CollectibleName ?? "unknown collectible"}",                
 				_ => "default violation"
         };            
             

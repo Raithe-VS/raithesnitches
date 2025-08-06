@@ -58,6 +58,8 @@ namespace raithesnitches
 			api.Event.OnEntitySpawn += AddEntityBehaviors;
 
 			api.Event.OnEntityDeath += SnitchEventsServer.OnEntityDeath;
+			api.Event.OnPlayerInteractEntity += SnitchEventsServer.OnPlayerInteractEntity;
+			api.Event.OnEntitySpawn += SnitchEventsServer.OnEntitySpawn;			
 
             api.Event.DidUseBlock += SnitchEventsServer.DidUseBlock;
             api.Event.DidPlaceBlock += SnitchEventsServer.DidPlaceBlock;

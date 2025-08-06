@@ -57,48 +57,9 @@ namespace raithesnitches.src.HarmonyPatching
                         __result.StackSize
                     );
 
-                    snitchMod.violationLogger.AddViolation(violation, snitch);
+                    snitch.AddViolation(violation);
                 }
             }
         }
-    }
-
-    //[HarmonyPatch(typeof(ItemSlot), "TakeOut")]
-    //public static class ItemSlotPatchTakeOut
-    //{
-    //    public static void Postfix(ItemSlot __instance, int quantity, ref ItemStack __result)
-    //    {
-    //        if (__result == null || __result.StackSize == 0)
-    //            return;
-
-    //        SnitchesModSystem SnitchMod = __instance.Inventory.Api.ModLoader.GetModSystem<SnitchesModSystem>();
-
-    //        HashSet<string> players = __instance.Inventory?.openedByPlayerGUIds;
-    //        foreach (var playerUID in players)
-    //        {
-    //            IPlayer player = __instance.Inventory.Api.World.PlayerByUid(playerUID);
-
-    //            if (player == null || !player.Entity?.Api?.Side.IsServer() == true)
-    //                break;
-
-    //            if (SnitchMod != null && SnitchMod.trackedPlayers.ContainsKey(player.PlayerUID))
-    //            {
-    //                foreach (var snitch in SnitchMod.trackedPlayers[player.PlayerUID])
-    //                {
-    //                    if (snitch != null && __instance.Inventory.Pos?.HorDistanceSqTo(snitch.Pos.X, snitch.Pos.Y) < snitch.Radius)
-    //                    {
-    //                        SnitchViolation violation = new SnitchViolation(EnumViolationType.CollectibleTaken, player.Entity, __instance.Inventory.Pos, __instance.Inventory.Api.World.Calendar.PrettyDate(), __instance.Inventory.Api.World.Calendar.ElapsedDays, __instance.Inventory.Api.World.Calendar.ElapsedSeconds, __instance.Inventory.Api.World.Calendar.Year, __instance.Inventory.Api.World.BlockAccessor.GetBlock(__instance.Inventory.Pos), null, __instance.Itemstack.Collectible);
-
-    //                        SnitchMod.violationLogger.AddViolation(violation, snitch);
-
-    //                    }
-    //                }
-
-    //            }
-
-    //        }
-
-    //    }
-
-    //}
+    }    
 }

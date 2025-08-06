@@ -88,17 +88,14 @@ namespace raithesnitches.src.Violations
 	}
 
 	public class ViolationLogger
-	{
-        private readonly DeduplicationFilter deduplicationFilter;
+	{       
         
         private readonly ConditionalWeakTable<IServerChunk, SnitchChunkData> _SnitchChunks = new();
 		ICoreServerAPI sapi;
 
 		public ViolationLogger(ICoreServerAPI sapi)
 		{
-            this.sapi = sapi;
-            this.deduplicationFilter = new DeduplicationFilter(sapi);
-			sapi.Event.RegisterGameTickListener(deduplicationFilter.Cleanup, 30000, 10000);
+            this.sapi = sapi;		
         }
 
 		public Queue<SnitchViolation> GetViolations(int count, BlockEntitySnitch beSnitch)
@@ -130,12 +127,7 @@ namespace raithesnitches.src.Violations
 		}        
 
         public void AddViolation(SnitchViolation violation, BlockEntitySnitch beSnitch)
-		{
-            if (deduplicationFilter.ShouldSuppress(violation))
-            {
-                sapi.Logger.VerboseDebug($"Suppressed {violation.Type} by {violation.playerUID} at {violation.position}");
-                return;
-            }
+		{            
 
             IServerChunk chunk = sapi.WorldManager.GetChunk(beSnitch.Pos);
 

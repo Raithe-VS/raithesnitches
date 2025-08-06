@@ -1,8 +1,11 @@
 ﻿using raithesnitches.src.BlockEntities;
 using raithesnitches.src.Constants;
 using System.Collections.Generic;
+using System.Text;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
+using Vintagestory.API.Config;
+using Vintagestory.API.MathTools;
 using Vintagestory.API.Util;
 using Vintagestory.GameContent;
 
@@ -10,7 +13,17 @@ namespace raithesnitches.src.Blocks
 {
     public class BlockSnitch : Block
     {
-        WorldInteraction[] interactions;        
+        WorldInteraction[] interactions;
+
+        public override void AddExtraHeldItemInfoPostMaterial(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world)
+        {
+            base.AddExtraHeldItemInfoPostMaterial(inSlot, dsc, world);
+
+            string text = Code.Domain + ":" + "extraheldinfo-" + Code.Path;
+            string matching = Lang.GetMatching(text);
+            matching = ((matching != text) ? matching : "");
+            dsc.AppendLine(matching);
+        }
 
         public override bool OnBlockInteractStart(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
         {
@@ -56,14 +69,19 @@ namespace raithesnitches.src.Blocks
             ICoreClientAPI capi = api as ICoreClientAPI;
 
             List<ItemStack> bookStackList = new List<ItemStack>();
+            List<ItemStack> writingToolStackList = new List<ItemStack>();
 
             foreach (Item item in api.World.Items)
             {
                 if (item.Code == null) continue;
 
-                if (item is ItemBook)
+                if (item is ItemBook && item.Attributes?["editable"]?.AsBool() == true)
                 {
                     bookStackList.Add(new ItemStack(item));
+                }
+                if (item.Attributes?["writingTool"]?.AsBool() == true)
+                { 
+                    writingToolStackList.Add(new ItemStack(item));
                 }
 
             }
@@ -72,17 +90,30 @@ namespace raithesnitches.src.Blocks
             {
                 return new WorldInteraction[]{
                     new WorldInteraction() {
-                        ActionLangCode = "blockhelp-snitch-activate",
+                        ActionLangCode = "raithesnitches:blockhelp-snitch-activate",
                         HotKeyCode = "shift",
                         MouseButton = EnumMouseButton.Right,
                         ShouldApply = (wi, bs, es) => {
                             BlockEntitySnitch bes = api.World.BlockAccessor.GetBlockEntity(bs.Position) as BlockEntitySnitch;
                             return bes?.Activated != true;
                         }
-                    },                    
+                    },
                     new WorldInteraction()
                     {
-                        ActionLangCode = "blockhelp-snitch-writeviolations",
+                        ActionLangCode = "raithesnitches:blockhelp-snitch-writeviolations-writingtool",
+                        HotKeyCode = "ctrl",
+                        MouseButton = EnumMouseButton.Right,
+                        Itemstacks = writingToolStackList.ToArray(),
+
+                        ShouldApply = (wi, bs, es) => {
+                            BlockEntitySnitch bes = api.World.BlockAccessor.GetBlockEntity(bs.Position) as BlockEntitySnitch;
+                            return bes?.Activated == true;
+                        }
+                    },
+
+                    new WorldInteraction()
+                    {
+                        ActionLangCode = "raithesnitches:blockhelp-snitch-writeviolations-medium",
                         HotKeyCode = "ctrl",
                         MouseButton = EnumMouseButton.Right,
                         Itemstacks = bookStackList.ToArray(),

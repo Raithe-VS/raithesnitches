@@ -26,9 +26,9 @@ namespace raithesnitches.src.Config
         public int snitchMaxLog = 2000;
 
         [JsonProperty]
-        public int maxBookLog = 100;
+        public int maxBookLog = 200;
         [JsonProperty]
-        public int maxPaperLog = 10;
+        public int maxPaperLog = 20;
         [JsonProperty]
         public float snitchDownloadTime = 2.0f;
 

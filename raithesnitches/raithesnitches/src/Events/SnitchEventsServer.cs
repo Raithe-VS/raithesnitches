@@ -140,8 +140,6 @@ namespace raithesnitches.src.Events
 		/// <param name="damageSource"></param>
 		public static void OnEntityDeath(Entity entity, DamageSource damageSource)
 		{		
-			
-
 			if (damageSource == null) return;
 			if (damageSource.GetCauseEntity() == null || !(damageSource.GetCauseEntity() is EntityPlayer)) return;
 			IServerPlayer byPlayer = (damageSource.SourceEntity as EntityPlayer).Player as IServerPlayer;
@@ -166,6 +164,65 @@ namespace raithesnitches.src.Events
 				}
 			}
 		}
-				
-	}
+
+        internal static void OnEntitySpawn(Entity entity)
+        {
+			if (entity is EntityPlayer) { 
+				IServerPlayer byPlayer = (entity as EntityPlayer).Player as IServerPlayer;
+				ICoreAPI api = entity.Api;
+                SnitchesModSystem SnitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
+
+                if (SnitchMod.trackedPlayers.TryGetValue(byPlayer.PlayerUID, out List<BlockEntitySnitch> snitches))
+                {
+                    if (snitches != null)
+                    {
+                        foreach (BlockEntitySnitch s in snitches)
+                        {
+                            string prettyDate = api.World.Calendar.PrettyDate();
+                            double day = api.World.Calendar.ElapsedDays;
+                            long time = api.World.Calendar.ElapsedSeconds;
+                            int year = api.World.Calendar.Year;
+
+                            SnitchViolation violation = new SnitchViolation(EnumViolationType.PlayerSpawned, byPlayer, entity.Pos.AsBlockPos, prettyDate, day, time, year, null, null);
+
+                            s.AddViolation(violation);
+                        }
+                    }
+                }
+
+            }
+
+
+        }
+
+        internal static void OnPlayerInteractEntity(Entity entity, IPlayer byPlayer, ItemSlot slot, Vec3d hitPosition, int mode, ref EnumHandling handling)
+        {
+            if(mode == 1)
+			{
+                ICoreAPI api = byPlayer.Entity.Api;
+				if (api.Side == EnumAppSide.Client) return;
+                SnitchesModSystem SnitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
+
+                if (SnitchMod.trackedPlayers.TryGetValue(byPlayer.PlayerUID, out List<BlockEntitySnitch> snitches))
+                {
+                    if (snitches != null)
+                    {
+                        foreach (BlockEntitySnitch s in snitches)
+                        {
+                            string prettyDate = api.World.Calendar.PrettyDate();
+                            double day = api.World.Calendar.ElapsedDays;
+                            long time = api.World.Calendar.ElapsedSeconds;
+                            int year = api.World.Calendar.Year;
+
+                            SnitchViolation violation = new SnitchViolation(EnumViolationType.EntityInteracted, byPlayer as IServerPlayer, entity.Pos.AsBlockPos, prettyDate, day, time, year, null, entity);
+
+                            s.AddViolation(violation);
+                        }
+                    }
+                }
+            }
+
+
+        }
+    }
 }
