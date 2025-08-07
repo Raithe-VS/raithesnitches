@@ -16,12 +16,13 @@ namespace raithesnitches.src.Violations
         ReinforcementBroke = 1 << 5,   // 32
         ReinforcementPlaced = 1 << 6,   // 64
 
-        EntityInteracted = 1 << 7,   // 128
-        EntityHit = 1 << 8,   // 256
-        EntityKilled = 1 << 9,   // 512
-        PlayerSpawned = 1 << 10,  // 1024
+        EntityHit = 1 << 7,   // 128
+        EntityKilled = 1 << 8,    // 256
+        PlayerSpawned = 1 << 9,  // 512
+        
+        CollectibleTaken = 1 << 10  // 1024
 
-        CollectibleTaken = 1 << 11   // 2048
+        
     }
 }
 

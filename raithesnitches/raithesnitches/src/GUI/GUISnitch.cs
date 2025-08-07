@@ -1,6 +1,7 @@
 ﻿using ProtoBuf;
 using raithesnitches.src.Violations;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -18,41 +19,62 @@ namespace raithesnitches.src.GUI
         [ProtoMember(2)] public EnumViolationType Flags { get; set; }
     }
 
+    [ProtoContract]
+    public class SnitchPlayerIgnoreListPacket
+    {
+        [ProtoMember(1)] public string PlayerName { get; set; }        
+    }
+
+    [ProtoContract]
+    public class SnitchGroupIgnoreListPacket
+    {
+        [ProtoMember(1)] public string GroupName { get; set; }
+    }
+
     public class GuiSnitch : GuiDialogBlockEntity
     {
-        EnumViolationType currentFlags;
-        BlockPos snitchPos;        
+        EnumViolationType currentFlags;        
+        BlockPos snitchPos;
+        string currentInputAddPlayer;
+        string currentInputAddGroup;
+        List<string> IgnoredPlayerList = new();
+        List<string> IgnoredGroupsList = new();
 
         Dictionary<EnumViolationType, ElementBounds> toggleBounds = new();
         Dictionary<EnumViolationType, bool> toggled = new();
 
-        public GuiSnitch(BlockPos blockEntityPos, ICoreClientAPI capi, EnumViolationType flags) : base("SnitchConfig", blockEntityPos, capi)
+        public GuiSnitch(BlockPos blockEntityPos, ICoreClientAPI capi, EnumViolationType flags, List<string> ignoredPlayers, List<string> ignoredGroups) : base("SnitchConfig", blockEntityPos, capi)
         {
             this.snitchPos = blockEntityPos;
             this.capi = capi;
             this.currentFlags = flags;
+            IgnoredPlayerList = ignoredPlayers; 
+            IgnoredGroupsList = ignoredGroups;
 
-            ComposeDialog();
+            ComposeDialog();            
         }
 
         void ComposeDialog()
         {
             ElementBounds bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
             ElementBounds dialogBounds = ElementStdBounds.AutosizedMainDialog.WithAlignment(EnumDialogArea.CenterMiddle);
-            bgBounds.BothSizing = ElementSizing.FitToChildren;
+            bgBounds.BothSizing = ElementSizing.FitToChildren;  
+
 
             if (SingleComposer != null) SingleComposer.Dispose();
-            SingleComposer = capi.Gui.CreateCompo("snitch-config", dialogBounds)
+            SingleComposer = capi.Gui.CreateCompo("snitch-config" + snitchPos, dialogBounds)
                 .AddShadedDialogBG(bgBounds)
-                .AddDialogTitleBar("Snitch Violation Flags", OnTitleBarClose)
+                .AddDialogTitleBar("Snitch Violation Flags & Ignore Lists", OnTitleBarClose)
                 .BeginChildElements(bgBounds);
 
             int i = 0;
-            
+            int x = 0;
+            int y = 0;
+
             foreach (EnumViolationType flag in Enum.GetValues(typeof(EnumViolationType)))
             {
-                int x = i % 2 == 0 ? 0 : 250;
-                int y = i % 2 == 1 ? -1 : 0;
+                x = i % 2 == 0 ? 0 : 250;
+                y = i % 2 == 1 ? -1 : 0;
                 
                 ElementBounds toggle = ElementBounds.Fixed(0 + x, 40 + (i + y) * 20, 20, 20);
                 ElementBounds label = ElementBounds.Fixed(40 + x, 40 + (i + y) * 20, 180, 20);
@@ -69,14 +91,111 @@ namespace raithesnitches.src.GUI
                 i++;
             }
 
-            ElementBounds saveButton = ElementBounds.Fixed(0, 50 + i * 20, 100, 25);
-            SingleComposer.AddSmallButton("Save", OnSave, saveButton);
+            int baseY = 60 + (i + y) * 20;
+
+            ElementBounds textBounds = ElementBounds.Fixed(0, baseY, 200, 25);
+            ElementBounds textInputBoxBounds = ElementBounds.Fixed(0, baseY + 30, 160, 25);
+            ElementBounds addButtonBounds = ElementBounds.Fixed(180, baseY + 30, 20, 20);
+            ElementBounds removeButtonBounds = ElementBounds.Fixed(200, baseY + 30, 20, 20);
+            ElementBounds listBounds = ElementBounds.Fixed(0, baseY + 60, 260, 100);
+
+            SingleComposer
+                .AddStaticText("Player Ignore List", CairoFont.WhiteSmallishText(), textBounds)
+                .AddTextInput(textInputBoxBounds, OnPlayerTextChanged, CairoFont.WhiteSmallText(), "ignore-player")
+                .AddSmallButton("+", OnAddIgnoredPlayer, addButtonBounds)
+                .AddSmallButton("-", OnRemovePlayer, removeButtonBounds);
+
+            int offset = 0;
+            foreach (string player in IgnoredPlayerList)
+            {
+                ElementBounds entryBounds = ElementBounds.Fixed(0, baseY + 60 + offset * 20, 250, 20);
+                SingleComposer.AddStaticText(player, CairoFont.WhiteSmallText(), entryBounds);
+                offset++;
+            }
+
+            int baseX = 230;
+
+            ElementBounds groupTextBounds = ElementBounds.Fixed(baseX, baseY, 200, 25);
+            ElementBounds groupTextInputBoxBounds = ElementBounds.Fixed(baseX, baseY + 30, 160, 25);
+            ElementBounds groupAddButtonBounds = ElementBounds.Fixed(baseX + 180, baseY + 30, 20, 20);
+            ElementBounds groupRemoveButtonBounds = ElementBounds.Fixed(baseX + 200, baseY + 30, 20, 20);
+            ElementBounds groupListBounds = ElementBounds.Fixed(baseX, baseY + 60, 260, 100);
+
+            SingleComposer
+                .AddStaticText("Group Ignore List", CairoFont.WhiteSmallishText(), groupTextBounds)
+                .AddTextInput(groupTextInputBoxBounds, OnGroupTextChanged, CairoFont.WhiteSmallText(), "ignore-group")
+                .AddSmallButton("+", OnAddIgnoredGroup, groupAddButtonBounds)
+                .AddSmallButton("-", OnRemoveGroup, groupRemoveButtonBounds);
+
+            offset = 0;
+            foreach (string group in IgnoredGroupsList)
+            {
+                ElementBounds entryBounds = ElementBounds.Fixed(baseX, baseY + 60 + offset * 20, 250, 20);
+                SingleComposer.AddStaticText(group, CairoFont.WhiteSmallText(), entryBounds);
+                offset++;
+            }
+
 
             SingleComposer.EndChildElements();
             SingleComposer.Compose();
         }
 
-           
+        private bool OnRemoveGroup()
+        {
+            SendSnitchRemoveIgnoreGroupPacket(new SnitchGroupIgnoreListPacket
+            {
+                GroupName = currentInputAddGroup
+            });
+
+            TryClose();
+            
+            return true;
+        }
+
+        private bool OnAddIgnoredGroup()
+        {
+            SendSnitchAddIgnoreGroupPacket(new SnitchGroupIgnoreListPacket
+            {
+                GroupName = currentInputAddGroup
+            });
+
+            TryClose();           
+
+            return true;
+        }
+
+        private void OnGroupTextChanged(string obj)
+        {
+            currentInputAddGroup = obj;
+        }
+
+        private bool OnRemovePlayer()
+        {
+            SendSnitchRemoveIgnorePlayerPacket(new SnitchPlayerIgnoreListPacket
+            {
+                PlayerName = currentInputAddPlayer
+            });            
+
+            TryClose();
+
+            return true;
+        }
+
+        private bool OnAddIgnoredPlayer()
+        {
+            SendSnitchAddIgnorePlayerPacket(new SnitchPlayerIgnoreListPacket {
+                PlayerName = currentInputAddPlayer
+            });
+            
+            TryClose();
+
+            return true;
+        }
+
+        private void OnPlayerTextChanged(string obj)
+        {
+            currentInputAddPlayer = obj;
+        }
 
         private bool OnSave()
         {
@@ -88,24 +207,49 @@ namespace raithesnitches.src.GUI
                 }
             }
 
-            capi.Network.SendBlockEntityPacket(snitchPos, 42, SerializerUtil.Serialize(new SnitchFlagUpdatePacket
+            SendSnitchFlagUpdatePacket(new SnitchFlagUpdatePacket
             {
                 SnitchPos = snitchPos,
                 Flags = flags
-            }));
+            });           
 
-            TryClose();
+            //TryClose();
             return true;
         }
 
-        private void OnTitleBarClose()
+        public override void OnGuiClosed()
         {
+            OnSave();
+            base.OnGuiClosed();
+        }
+
+        private void OnTitleBarClose()
+        {            
             TryClose();
         }
 
-        private void SendSanctuaryPacket(SnitchFlagUpdatePacket packet)
+        private void SendSnitchFlagUpdatePacket(SnitchFlagUpdatePacket packet)
         {
-            capi.Network.SendBlockEntityPacket(BlockEntityPosition, 37, SerializerUtil.Serialize(packet));
+            capi.Network.SendBlockEntityPacket(snitchPos, 42, SerializerUtil.Serialize(packet));
+        }
+
+        private void SendSnitchAddIgnorePlayerPacket(SnitchPlayerIgnoreListPacket packet)
+        {
+            capi.Network.SendBlockEntityPacket(snitchPos, 43, SerializerUtil.Serialize(packet));
+        }
+        private void SendSnitchRemoveIgnorePlayerPacket(SnitchPlayerIgnoreListPacket packet)
+        {
+            capi.Network.SendBlockEntityPacket(snitchPos, 44, SerializerUtil.Serialize(packet));
+        }
+
+        private void SendSnitchAddIgnoreGroupPacket(SnitchGroupIgnoreListPacket packet)
+        {
+            capi.Network.SendBlockEntityPacket(snitchPos, 45, SerializerUtil.Serialize(packet));
+        }
+
+        private void SendSnitchRemoveIgnoreGroupPacket(SnitchGroupIgnoreListPacket packet)
+        {
+            capi.Network.SendBlockEntityPacket(snitchPos, 46, SerializerUtil.Serialize(packet));
         }
     }
 

@@ -1,30 +1,29 @@
 ﻿using raithesnitches.src.Config;
 using raithesnitches.src.Constants;
+using raithesnitches.src.GUI;
 using raithesnitches.src.Players;
 using raithesnitches.src.Violations;
-using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
+using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
+using Vintagestory.API.Util;
 using Vintagestory.GameContent;
 
 
 namespace raithesnitches.src.BlockEntities
 {
-    using raithesnitches.src.GUI;
+    
 
     /// <summary>
     /// A block entity that monitors nearby Seraph activity and logs violations such as trespassing, block interaction,
     /// or item theft. Requires a writing medium and writing tool to extract logs. Integrates with reinforcement groups
     /// and editable book systems. Supports activation, tracking, and log serialization.
     /// </summary>
-    using System;
-    using Vintagestory.API.Client;
-    using Vintagestory.API.Util;
-
     public class BlockEntitySnitch : BlockEntity
     {
         // --- Configuration ---
@@ -39,6 +38,8 @@ namespace raithesnitches.src.BlockEntities
 
         // --- Ownership ---
         public string CurrentOwnerUID { get; private set; }
+        public List<string> playersToIgnore = new();
+        public List<string> groupsToIgnore = new();
         public int violationCount { get; set; }
         public bool Activated { get; private set; } = false;
 
@@ -60,6 +61,7 @@ namespace raithesnitches.src.BlockEntities
         private EnumViolationType enabledViolationFlags = (EnumViolationType)(-1); // All flags on by default
 
         protected GuiSnitch clientDialog;
+        
 
         private SnitchesServerConfig config => SnitchesModSystem.config;
 
@@ -67,13 +69,14 @@ namespace raithesnitches.src.BlockEntities
         {
             base.Initialize(api);
             InitializeMods(api);
-            InitializeConfig();
+            InitializeConfig();            
             if (api.Side == EnumAppSide.Server && Activated) TryActivate();
         }
 
         private void InitializeMods(ICoreAPI api)
         {
             snitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
+            if(api.Side == EnumAppSide.Server) snitchMod.loadedSnitches.Add(this);
             bookMod = api.ModLoader.GetModSystem<ModSystemEditableBook>();
             reinforceMod = api.ModLoader.GetModSystem<ModSystemBlockReinforcement>();
             if (api.Side == EnumAppSide.Server) violationLogger = snitchMod.violationLogger;
@@ -109,6 +112,28 @@ namespace raithesnitches.src.BlockEntities
                     playersTracked.Add(trackedTree.GetString("player" + i));
                 }
             }
+
+            playersToIgnore.Clear();
+            count = tree.GetInt("playersToIgnoreCount");
+            var ignoreTree = tree.GetTreeAttribute("ignorePlayers");
+            if (ignoreTree != null)
+            {
+                for(int i = 0;i < count;i++)
+                {
+                    playersToIgnore.Add(ignoreTree.GetString("player" + i));
+                }
+            }
+
+            groupsToIgnore.Clear();
+            count = tree.GetInt("groupsToIgnoreCount");
+            var ignoreGroupTree = tree.GetTreeAttribute("ignoreGroups");
+            if (ignoreGroupTree != null)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    groupsToIgnore.Add(ignoreGroupTree.GetString("group" + i));
+                }
+            }
         }
 
         public override void ToTreeAttributes(ITreeAttribute tree)
@@ -119,6 +144,8 @@ namespace raithesnitches.src.BlockEntities
             tree.SetInt("violationCount", violationCount);
             tree.SetInt("enabledViolationFlags", (int)enabledViolationFlags);
             tree.SetInt("playersTrackedCount", playersTracked.Count);
+            tree.SetInt("playersToIgnoreCount", playersToIgnore.Count);
+            tree.SetInt("groupsToIgnoreCount", groupsToIgnore.Count);
 
             if (Activated && playersTracked.Count > 0)
             {
@@ -126,6 +153,24 @@ namespace raithesnitches.src.BlockEntities
                 for (int i = 0; i < playersTracked.Count; i++)
                 {
                     trackedTree.SetString("player" + i, playersTracked[i]);
+                }
+            }
+
+            if (Activated && playersToIgnore.Count > 0)
+            {
+                var ignoreTree = tree.GetOrAddTreeAttribute("ignorePlayers");
+                for (int i = 0; i < playersToIgnore.Count; i++)
+                {
+                    ignoreTree.SetString("player" + i, playersToIgnore[i]);
+                }
+            }
+
+            if (Activated && groupsToIgnore.Count > 0)
+            {
+                var ignoreGroupTree = tree.GetOrAddTreeAttribute("ignoreGroups");
+                for (int i = 0; i < groupsToIgnore.Count; i++)
+                {
+                    ignoreGroupTree.SetString("group" + i, groupsToIgnore[i]);
                 }
             }
         }
@@ -155,7 +200,7 @@ namespace raithesnitches.src.BlockEntities
                     return true;
                 }
 
-                clientDialog = new GuiSnitch(Pos, Api as ICoreClientAPI, enabledViolationFlags);
+                clientDialog = new GuiSnitch(Pos, Api as ICoreClientAPI, enabledViolationFlags, playersToIgnore, groupsToIgnore);
                 clientDialog.TryOpen();
                 clientDialog.OnClosed += () => {
                     clientDialog?.Dispose(); clientDialog = null;
@@ -310,6 +355,7 @@ namespace raithesnitches.src.BlockEntities
         private bool ShouldPingPlayer(IPlayer player)
         {
             if (!IsOwner(player)) return false;
+            if (CheckIgnorePlayer(player)) return false;
             if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
             return true;
         }
@@ -357,15 +403,25 @@ namespace raithesnitches.src.BlockEntities
             if (Api.Side == EnumAppSide.Server)
             {
                 violationLogger.ClearViolationChunkData(this);
+                RemoveSnitchesFromTracker();
+            } else
+            {
+                if (clientDialog != null)
+                {
+                    clientDialog.TryClose();                    
+                }
             }
-            RemoveSnitchesFromTracker();
+                
             base.OnBlockRemoved();
         }
 
         public override void OnBlockUnloaded()
         {
             base.OnBlockUnloaded();
-            RemoveSnitchesFromTracker();
+            if (Api.Side == EnumAppSide.Server)
+            {
+                RemoveSnitchesFromTracker();
+            }
         }
 
         public override void GetBlockInfo(IPlayer forPlayer, StringBuilder dsc)
@@ -398,18 +454,30 @@ namespace raithesnitches.src.BlockEntities
             foreach (var snitchList in snitchMod.trackedPlayers.Values)
             {
                 snitchList.Remove(this);
-            }
+            }            
+            snitchMod.loadedSnitches.Remove(this);
+                 
         }
 
         private bool HasPermission(IPlayer player)
         {
             if (IsOwner(player)) return true;
-            return reinforceMod.IsReinforced(Pos) && player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null;
+            return false;
+            //return reinforceMod.IsReinforced(Pos) && player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null;
         }
 
         private bool IsOwner(IPlayer player)
         {
             return player.PlayerUID == CurrentOwnerUID;
+        }
+
+        private bool CheckIgnorePlayer(IPlayer player)
+        {
+            if(playersToIgnore.Contains(player.PlayerName)) return true;
+            foreach (var group in player.Groups) { 
+                if (groupsToIgnore.Contains(group.GroupName)) return true;
+            }
+            return false;
         }
 
         public override void OnReceivedClientPacket(IPlayer fromPlayer, int packetid, byte[] data)
@@ -421,6 +489,50 @@ namespace raithesnitches.src.BlockEntities
                 enabledViolationFlags = packet.Flags;
                 
             }
+            if (packetid == 43)
+            {
+                var packet = SerializerUtil.Deserialize<SnitchPlayerIgnoreListPacket>(data);
+                if (!playersToIgnore.Contains(packet.PlayerName))
+                {   
+                    playersToIgnore.Add(packet.PlayerName);
+                    MarkDirty();
+                }
+                else
+                {
+                    (Api as ICoreServerAPI).SendIngameError(fromPlayer as IServerPlayer, "Player is already on the Ignore List!", "Player is already on the Ignore List!");
+                }
+            }
+            if (packetid == 44)
+            {
+                var packet = SerializerUtil.Deserialize<SnitchPlayerIgnoreListPacket>(data);
+                if(!playersToIgnore.Remove(packet.PlayerName)) (Api as ICoreServerAPI).SendIngameError(fromPlayer as IServerPlayer, "Player was not on the Ignore List!", "Player was not on the Ignore List!");
+                MarkDirty();
+            }
+            if (packetid == 45)
+            {
+                var packet = SerializerUtil.Deserialize<SnitchGroupIgnoreListPacket>(data);
+                if (!groupsToIgnore.Contains(packet.GroupName))
+                {
+                    if((Api as ICoreServerAPI).Groups.GetPlayerGroupByName(packet.GroupName) == null)
+                    {
+                        (Api as ICoreServerAPI).SendIngameError(fromPlayer as IServerPlayer, "Group doesn't exist!", "Group doesn't exist!");
+                        return;
+                    }
+
+                    groupsToIgnore.Add(packet.GroupName);
+                    MarkDirty();
+                } else
+                {
+                    (Api as ICoreServerAPI).SendIngameError(fromPlayer as IServerPlayer, "Group is already on the Ignore List!", "Group is already on the Ignore List!");
+                }              
+            }
+            if (packetid == 46)
+            {
+                var packet = SerializerUtil.Deserialize<SnitchGroupIgnoreListPacket>(data);
+                if(!groupsToIgnore.Remove(packet.GroupName)) (Api as ICoreServerAPI).SendIngameError(fromPlayer as IServerPlayer, "Group was not on the Ignore List!", "Group was not on the Ignore List!");
+                MarkDirty();
+            }
+
         }
     }
 

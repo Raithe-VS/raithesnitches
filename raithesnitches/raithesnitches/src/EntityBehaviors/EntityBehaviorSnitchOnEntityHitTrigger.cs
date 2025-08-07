@@ -12,8 +12,7 @@ using raithesnitches;
 
 namespace raithesnitches.src.EntityBehaviors
 {
-	// Not implemented
-
+	
 	public class EntityBehaviorSnitchOnEntityHitTrigger : EntityBehavior
 	{
 		public EntityBehaviorSnitchOnEntityHitTrigger(Entity entity) : base(entity)
@@ -33,7 +32,7 @@ namespace raithesnitches.src.EntityBehaviors
 				ICoreAPI api = byPlayer.Entity.Api;
 				SnitchesModSystem SnitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
 
-				if (SnitchMod.trackedPlayers.TryGetValue(byPlayer.PlayerName, out List<BlockEntitySnitch> snitches))
+				if (SnitchMod.trackedPlayers.TryGetValue(byPlayer.PlayerUID, out List<BlockEntitySnitch> snitches))
 				{
 					if (snitches != null)
 					{

@@ -31,6 +31,7 @@ namespace raithesnitches
 		public ViolationLogger violationLogger;
 
         public Dictionary<string, List<BlockEntitySnitch>> trackedPlayers;
+		public List<BlockEntitySnitch> loadedSnitches;
 
         public override void StartPre(ICoreAPI api)
         {
@@ -53,12 +54,12 @@ namespace raithesnitches
         public override void StartServerSide(ICoreServerAPI api)
         {
 			violationLogger = new ViolationLogger(api);
+			loadedSnitches = new List<BlockEntitySnitch>();
 
 			api.Event.OnEntityLoaded += AddEntityBehaviors;
 			api.Event.OnEntitySpawn += AddEntityBehaviors;
 
-			api.Event.OnEntityDeath += SnitchEventsServer.OnEntityDeath;
-			api.Event.OnPlayerInteractEntity += SnitchEventsServer.OnPlayerInteractEntity;
+			api.Event.OnEntityDeath += SnitchEventsServer.OnEntityDeath;			
 			api.Event.OnEntitySpawn += SnitchEventsServer.OnEntitySpawn;			
 
             api.Event.DidUseBlock += SnitchEventsServer.DidUseBlock;
