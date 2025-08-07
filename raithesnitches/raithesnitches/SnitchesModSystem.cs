@@ -7,6 +7,7 @@ using raithesnitches.src.Events;
 using raithesnitches.src.Violations;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -23,10 +24,9 @@ namespace raithesnitches
 
 		public const string CONFIG_TREE_DATA_NAME = "SnitchesConfig";
 		public const string CONFIG_FOLDER_NAME = "RaitheSnitches/";
-		public const string SERVER_CONFIG_FILE_NAME = "snitches_server.json";
-		
+		public const string SERVER_CONFIG_FILE_NAME = "snitches_server.json";        
 
-        public static SnitchesServerConfig config;
+		public static Dictionary<string, SnitchesConfig> Configs;
 
 		public ViolationLogger violationLogger;
 
@@ -92,50 +92,81 @@ namespace raithesnitches
         {
 			try
 			{
-				config = api.LoadModConfig<SnitchesServerConfig>(CONFIG_FOLDER_NAME + SERVER_CONFIG_FILE_NAME);
-				if (config == null)
+				var configs = api.LoadModConfig<SnitchesServerConfigs>(CONFIG_FOLDER_NAME + SERVER_CONFIG_FILE_NAME);
+				
+				if (configs == null)
 				{
-					config = new SnitchesServerConfig(api);
+					
+					Configs = SnitchesConfig.CreateBaseConfigs(api);
+					configs = new SnitchesServerConfigs()
+					{
+						SnitchConfigs = Configs.Values.ToArray()
+					};
+				} else
+				{
+					Configs = new();
+					foreach(var config in configs.SnitchConfigs)
+					{
+						Configs.Add(config.code, config);
+					}
 				}
-				api.StoreModConfig(config, CONFIG_FOLDER_NAME + SERVER_CONFIG_FILE_NAME);
+				api.StoreModConfig(configs, CONFIG_FOLDER_NAME + SERVER_CONFIG_FILE_NAME);
 			}
 			catch (Exception e)
 			{
 				Mod.Logger.Error("Could not load config! Loading defualt values!");
 				Mod.Logger.Error(e);
-				config = new SnitchesServerConfig(api);
+				Configs = SnitchesConfig.CreateBaseConfigs(api);
 			}
 		}
 
 		private void SetWorldConfigValues(ICoreServerAPI sapi)
 		{
-			ITreeAttribute tree = sapi.World.Config.GetOrAddTreeAttribute(CONFIG_TREE_DATA_NAME);
+			ITreeAttribute configTree = sapi.World.Config.GetOrAddTreeAttribute(CONFIG_TREE_DATA_NAME);
 
-			tree.SetInt(SnitchesConstants.SNITCH_RADIUS, config.snitchRadius);
-			tree.SetInt(SnitchesConstants.SNITCH_VERTICAL_DISTANCE, config.snitchVerticalRange);			
-			tree.SetInt(SnitchesConstants.SNITCH_MAX_PAPER_LOG, config.maxPaperLog);
-			tree.SetInt(SnitchesConstants.SNITCH_MAX_BOOK_LOG, config.maxBookLog);
-			tree.SetInt(SnitchesConstants.SNITCH_MAX_LOG, config.snitchMaxLog);
-			tree.SetBool(SnitchesConstants.SNITCH_SNEAKABLE, config.snitchSneakable);
-			tree.SetFloat(SnitchesConstants.SNITCH_TRUESIGHT_RANGE, config.snitchTruesightRange);
-			tree.SetFloat(SnitchesConstants.SNITCH_DOWNLOAD_TIME, config.snitchDownloadTime);
+			foreach (var config in Configs.Values) {
+
+				var tree = configTree.GetOrAddTreeAttribute(config.code);
+
+				tree.SetString("code", config.code);
+                tree.SetInt(SnitchesConstants.SNITCH_RADIUS, config.snitchRadius);
+                tree.SetInt(SnitchesConstants.SNITCH_VERTICAL_DISTANCE, config.snitchVerticalRange);
+                tree.SetInt(SnitchesConstants.SNITCH_MAX_PAPER_LOG, config.maxPaperLog);
+                tree.SetInt(SnitchesConstants.SNITCH_MAX_BOOK_LOG, config.maxBookLog);
+                tree.SetInt(SnitchesConstants.SNITCH_MAX_LOG, config.snitchMaxLog);
+                tree.SetBool(SnitchesConstants.SNITCH_SNEAKABLE, config.snitchSneakable);
+                tree.SetFloat(SnitchesConstants.SNITCH_TRUESIGHT_RANGE, config.snitchTruesightRange);
+                tree.SetFloat(SnitchesConstants.SNITCH_DOWNLOAD_TIME, config.snitchDownloadTime);
+
+            }			
 
 		}
 
 
 		private void GetWorldConfigValues(ICoreClientAPI capi)
-		{
-			config = new SnitchesServerConfig(capi);
-			ITreeAttribute tree = capi.World.Config.GetOrAddTreeAttribute(CONFIG_TREE_DATA_NAME);
+		{			
 
-			config.snitchRadius = tree.GetInt(SnitchesConstants.SNITCH_RADIUS, config.snitchRadius);
-			config.snitchVerticalRange = tree.GetInt(SnitchesConstants.SNITCH_VERTICAL_DISTANCE, config.snitchVerticalRange);			
-			config.maxPaperLog = tree.GetInt(SnitchesConstants.SNITCH_MAX_PAPER_LOG, config.maxPaperLog);
-			config.maxBookLog = tree.GetInt(SnitchesConstants.SNITCH_MAX_BOOK_LOG, config.maxBookLog);
-			config.snitchMaxLog = tree.GetInt(SnitchesConstants.SNITCH_MAX_LOG, config.snitchMaxLog);
-			config.snitchSneakable = tree.GetBool(SnitchesConstants.SNITCH_SNEAKABLE, config.snitchSneakable);
-			config.snitchTruesightRange = tree.GetFloat(SnitchesConstants.SNITCH_TRUESIGHT_RANGE, config.snitchTruesightRange);
-			config.snitchDownloadTime = tree.GetFloat(SnitchesConstants.SNITCH_DOWNLOAD_ANIMATION, config.snitchDownloadTime);
-		}
+			Configs = new();
+            ITreeAttribute configTree = capi.World.Config.GetOrAddTreeAttribute(CONFIG_TREE_DATA_NAME);
+
+			foreach(var tree in configTree.Values)
+			{
+				if(tree is ITreeAttribute itree)
+				{
+					var temp = new SnitchesConfig(capi,
+						itree.GetString("code"),
+						itree.GetBool(SnitchesConstants.SNITCH_SNEAKABLE),
+						itree.GetInt(SnitchesConstants.SNITCH_RADIUS),
+						itree.GetInt(SnitchesConstants.SNITCH_VERTICAL_DISTANCE),
+						itree.GetFloat(SnitchesConstants.SNITCH_TRUESIGHT_RANGE),
+						itree.GetInt(SnitchesConstants.SNITCH_MAX_LOG),
+						itree.GetInt(SnitchesConstants.SNITCH_MAX_BOOK_LOG),
+						itree.GetInt(SnitchesConstants.SNITCH_MAX_PAPER_LOG),
+						itree.GetFloat(SnitchesConstants.SNITCH_DOWNLOAD_TIME));
+
+					Configs.Add(temp.code, temp);
+				}
+            }
+        }
 	}
 }

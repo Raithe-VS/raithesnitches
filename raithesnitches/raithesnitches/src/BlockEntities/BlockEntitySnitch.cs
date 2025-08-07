@@ -1,4 +1,5 @@
-﻿using raithesnitches.src.Config;
+﻿using HarmonyLib;
+using raithesnitches.src.Config;
 using raithesnitches.src.Constants;
 using raithesnitches.src.GUI;
 using raithesnitches.src.Players;
@@ -61,9 +62,8 @@ namespace raithesnitches.src.BlockEntities
         private EnumViolationType enabledViolationFlags = (EnumViolationType)(-1); // All flags on by default
 
         protected GuiSnitch clientDialog;
-        
-
-        private SnitchesServerConfig config => SnitchesModSystem.config;
+                
+        private Dictionary<string, SnitchesConfig> Configs => SnitchesModSystem.Configs;
 
         public override void Initialize(ICoreAPI api)
         {
@@ -80,18 +80,37 @@ namespace raithesnitches.src.BlockEntities
             bookMod = api.ModLoader.GetModSystem<ModSystemEditableBook>();
             reinforceMod = api.ModLoader.GetModSystem<ModSystemBlockReinforcement>();
             if (api.Side == EnumAppSide.Server) violationLogger = snitchMod.violationLogger;
-        }
+        }        
 
         private void InitializeConfig()
         {
-            Radius = config.snitchRadius;
-            VertRange = config.snitchVerticalRange;
-            Sneakable = config.snitchSneakable;
-            TrueSightRange = Sneakable ? (int)(Radius * config.snitchTruesightRange) : Radius;
-            MaxBookLog = config.maxBookLog;
-            MaxPaperLog = config.maxPaperLog;
-            MaxSnitchLog = config.snitchMaxLog;
-            SnitchDownloadTime = config.snitchDownloadTime;
+            
+            if (Configs.TryGetValue(Block.Code, out var config))
+            {
+                    Radius = config.snitchRadius;
+                    VertRange = config.snitchVerticalRange;
+                    Sneakable = config.snitchSneakable;
+                    TrueSightRange = Sneakable ? (int)(Radius * config.snitchTruesightRange) : Radius;
+                    MaxBookLog = config.maxBookLog;
+                    MaxPaperLog = config.maxPaperLog;
+                    MaxSnitchLog = config.snitchMaxLog;
+                    SnitchDownloadTime = config.snitchDownloadTime;
+
+            } else
+            {
+                Api.Logger.Error("Config for block: " + Block.Code + " has no associated config loaded. Creating temp stats for this block!");
+
+                Radius = 16;
+                VertRange = 8;
+                Sneakable = false;
+                TrueSightRange = 16;
+                MaxBookLog = 500;
+                MaxPaperLog = 20;
+                MaxSnitchLog = 500;
+                SnitchDownloadTime = 4.0f;
+            }
+            
+                   
         }
 
         public override void FromTreeAttributes(ITreeAttribute tree, IWorldAccessor worldAccessForResolve)
@@ -351,7 +370,7 @@ namespace raithesnitches.src.BlockEntities
 
         private bool ShouldPingPlayer(IPlayer player)
         {
-            if (IsOwner(player)) return false;
+            if (!IsOwner(player)) return false;
             if (CheckIgnorePlayer(player)) return false;
             if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
             return true;
@@ -460,7 +479,7 @@ namespace raithesnitches.src.BlockEntities
         {
             if (IsOwner(player)) return true;
             return false;
-            //return reinforceMod.IsReinforced(Pos) && player.GetGroup(reinforceMod.GetReinforcment(Pos).GroupUid) != null;
+            
         }
 
         private bool IsOwner(IPlayer player)
