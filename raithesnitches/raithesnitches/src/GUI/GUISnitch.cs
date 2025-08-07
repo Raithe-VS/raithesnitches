@@ -95,21 +95,23 @@ namespace raithesnitches.src.GUI
 
             ElementBounds textBounds = ElementBounds.Fixed(0, baseY, 200, 25);
             ElementBounds textInputBoxBounds = ElementBounds.Fixed(0, baseY + 30, 160, 25);
-            ElementBounds addButtonBounds = ElementBounds.Fixed(180, baseY + 30, 20, 20);
-            ElementBounds removeButtonBounds = ElementBounds.Fixed(200, baseY + 30, 20, 20);
+            ElementBounds addButtonBounds = ElementBounds.Fixed(180, baseY + 30, 20, 20);            
             ElementBounds listBounds = ElementBounds.Fixed(0, baseY + 60, 260, 100);
 
             SingleComposer
                 .AddStaticText("Player Ignore List", CairoFont.WhiteSmallishText(), textBounds)
                 .AddTextInput(textInputBoxBounds, OnPlayerTextChanged, CairoFont.WhiteSmallText(), "ignore-player")
-                .AddSmallButton("+", OnAddIgnoredPlayer, addButtonBounds)
-                .AddSmallButton("-", OnRemovePlayer, removeButtonBounds);
+                .AddSmallButton("+", OnAddIgnoredPlayer, addButtonBounds);
 
             int offset = 0;
+            
             foreach (string player in IgnoredPlayerList)
             {
                 ElementBounds entryBounds = ElementBounds.Fixed(0, baseY + 60 + offset * 20, 250, 20);
-                SingleComposer.AddStaticText(player, CairoFont.WhiteSmallText(), entryBounds);
+                ElementBounds removeEntryBounds = ElementBounds.Fixed(180, baseY + 60 + offset * 20, 20, 20);
+                SingleComposer.AddStaticText(player, CairoFont.WhiteSmallText(), entryBounds)
+                .AddSmallButton("-", () => OnRemovePlayer(player), removeEntryBounds);
+
                 offset++;
             }
 
@@ -124,14 +126,16 @@ namespace raithesnitches.src.GUI
             SingleComposer
                 .AddStaticText("Group Ignore List", CairoFont.WhiteSmallishText(), groupTextBounds)
                 .AddTextInput(groupTextInputBoxBounds, OnGroupTextChanged, CairoFont.WhiteSmallText(), "ignore-group")
-                .AddSmallButton("+", OnAddIgnoredGroup, groupAddButtonBounds)
-                .AddSmallButton("-", OnRemoveGroup, groupRemoveButtonBounds);
+                .AddSmallButton("+", OnAddIgnoredGroup, groupAddButtonBounds);                
 
             offset = 0;
             foreach (string group in IgnoredGroupsList)
             {
                 ElementBounds entryBounds = ElementBounds.Fixed(baseX, baseY + 60 + offset * 20, 250, 20);
-                SingleComposer.AddStaticText(group, CairoFont.WhiteSmallText(), entryBounds);
+                ElementBounds removeEntryBounds = ElementBounds.Fixed(baseX + 180, baseY + 60 + offset * 20, 20, 20);
+                SingleComposer.AddStaticText(group, CairoFont.WhiteSmallText(), entryBounds)
+                .AddSmallButton("-", () => OnRemoveGroup(group), removeEntryBounds);
+
                 offset++;
             }
 
@@ -140,11 +144,11 @@ namespace raithesnitches.src.GUI
             SingleComposer.Compose();
         }
 
-        private bool OnRemoveGroup()
+        private bool OnRemoveGroup(string groupName)
         {
             SendSnitchRemoveIgnoreGroupPacket(new SnitchGroupIgnoreListPacket
             {
-                GroupName = currentInputAddGroup
+                GroupName = groupName
             });
 
             TryClose();
@@ -169,11 +173,11 @@ namespace raithesnitches.src.GUI
             currentInputAddGroup = obj;
         }
 
-        private bool OnRemovePlayer()
+        private bool OnRemovePlayer(string playerName)
         {
             SendSnitchRemoveIgnorePlayerPacket(new SnitchPlayerIgnoreListPacket
             {
-                PlayerName = currentInputAddPlayer
+                PlayerName = playerName
             });            
 
             TryClose();

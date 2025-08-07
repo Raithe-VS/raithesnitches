@@ -193,10 +193,7 @@ namespace raithesnitches.src.BlockEntities
             if(Activated && Api.Side == EnumAppSide.Client && IsOwner(byPlayer) && byPlayer.Entity.Controls.ShiftKey) {
 
                 if (clientDialog != null)
-                {
-                    //clientDialog.TryClose();
-                    //clientDialog.Dispose();
-                    //clientDialog = null;
+                {                    
                     return true;
                 }
 
@@ -354,7 +351,7 @@ namespace raithesnitches.src.BlockEntities
 
         private bool ShouldPingPlayer(IPlayer player)
         {
-            if (!IsOwner(player)) return false;
+            if (IsOwner(player)) return false;
             if (CheckIgnorePlayer(player)) return false;
             if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
             return true;

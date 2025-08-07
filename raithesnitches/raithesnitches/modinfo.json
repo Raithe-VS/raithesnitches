@@ -1,13 +1,13 @@
 {
-    "type": "code",
-    "modid": "raithesnitches",
-    "name": "raithesnitches",
-    "authors": [
-        "Raithe"
-    ],
-    "description": "",
-    "version": "1.0.0",
-    "dependencies": {
-        "game": ""
-    }
+  "type": "code",
+  "modid": "raithesnitches",
+  "name": "raithesnitches",
+  "authors": [
+    "Raithe"
+  ],
+  "description": "A mystical surveillance system for tracking player activity, inspired by Novacain's Snitches. Ideal for guarding bases, monitoring intrusions, and recording violations with immersive in-world mechanics.",
+  "version": "1.0.0",
+  "dependencies": {
+    "game": ""
+  }
 }
