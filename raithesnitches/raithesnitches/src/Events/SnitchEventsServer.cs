@@ -142,7 +142,7 @@ namespace raithesnitches.src.Events
 		{		
 			if (damageSource == null) return;
 			if (damageSource.GetCauseEntity() == null || !(damageSource.GetCauseEntity() is EntityPlayer)) return;
-			IServerPlayer byPlayer = (damageSource.SourceEntity as EntityPlayer).Player as IServerPlayer;
+			IServerPlayer byPlayer = (damageSource.GetCauseEntity() as EntityPlayer).Player as IServerPlayer;
 			ICoreAPI api = byPlayer.Entity.Api;
 			SnitchesModSystem SnitchMod = api.ModLoader.GetModSystem<SnitchesModSystem>();
 

@@ -25,7 +25,8 @@ namespace raithesnitches.src.EntityBehaviors
 		}
 
 		public override void OnEntityReceiveDamage(DamageSource damageSource, ref float damage)
-		{
+		{			
+
 			if (entity.Api.Side == EnumAppSide.Server && damageSource.GetCauseEntity() != null && damageSource.GetCauseEntity() is EntityPlayer)
 			{
 				IServerPlayer byPlayer = (damageSource.GetCauseEntity() as EntityPlayer).Player as IServerPlayer;

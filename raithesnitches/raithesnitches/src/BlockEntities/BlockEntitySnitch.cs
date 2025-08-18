@@ -4,6 +4,7 @@ using raithesnitches.src.Constants;
 using raithesnitches.src.GUI;
 using raithesnitches.src.Players;
 using raithesnitches.src.Violations;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -56,7 +57,7 @@ namespace raithesnitches.src.BlockEntities
 
         private long? OnPlayerEnterListenerID;
 
-        private SnitchPlayer snitchPlayer;
+        //private SnitchPlayer snitchPlayer;
 
         // --- Violation Settings ---
         private EnumViolationType enabledViolationFlags = (EnumViolationType)(-1); // All flags on by default
@@ -266,7 +267,7 @@ namespace raithesnitches.src.BlockEntities
             var bookSlot = byPlayer.Entity.ActiveHandItemSlot;
             var penSlot = byPlayer.Entity.LeftHandItemSlot;
 
-            if (!(bookSlot?.Itemstack?.Item is ItemBook))
+            if (!(bookSlot?.Itemstack?.Item is ItemBook) && bookSlot?.Itemstack.Item.Attributes["editable"]?.AsBool() == false)
             {
                 errorcode = "You need something to write in! Try a book or a piece of parchment!";
                 return false;
@@ -280,32 +281,62 @@ namespace raithesnitches.src.BlockEntities
 
             return true;
         }
-
+        
         private void WriteViolationsToMedium(IPlayer byPlayer)
         {
-            snitchPlayer = new SnitchPlayer
+            // Guard: only make sense on server & with a valid book slot
+            if (Api.Side != EnumAppSide.Server) return;
+
+            var entity = byPlayer?.Entity;
+            var bookSlot = entity?.ActiveHandItemSlot;
+            if (bookSlot?.Itemstack == null)
             {
-                playerName = "Snitch_" + Pos.ToLocalPosition(Api),
-                playerUID = "Snitch_" + Pos.ToLocalPosition(Api),
-                entityPlayer = byPlayer.Entity
-            };
-
-            var bookSlot = byPlayer.Entity.ActiveHandItemSlot;
-            bookMod.BeginEdit(snitchPlayer, bookSlot);
-
-            string title = "Violations pulled on " + Api.World.Calendar.PrettyDate();
-            int maxLogSize = bookSlot.Itemstack.Collectible.Code.ToString().Contains("parchment") ? MaxPaperLog : MaxBookLog;
-            var log = violationLogger.GetViolations(maxLogSize, this);
-
-            StringBuilder text = new StringBuilder();
-            int writtenCount = 0;
-            while (log.Count > 0 && writtenCount < maxLogSize)
-            {
-                text.AppendLine(log.Dequeue().LogbookFormat(Api));
-                writtenCount++;
+                (Api as ICoreServerAPI)?.SendIngameError(byPlayer as IServerPlayer, "No writing medium in main hand.");
+                return;
             }
 
-            bookMod.EndEdit(snitchPlayer, text.ToString(), title, true);
+            // Create a stable identity just once
+            string snitchId = "Snitch_" + Pos.ToLocalPosition(Api);            
+
+            // Title + max entries
+            var cal = Api.World.Calendar;
+            string title = $"{snitchId} - {cal.PrettyDate()}";
+            int maxEntries = GetMaxEntriesForMedium(bookSlot.Itemstack);
+
+            // Pull violations once
+            var queue = violationLogger.GetViolations(maxEntries, this);
+
+            // Pre-size the builder a bit to avoid many reallocations for large pulls
+            var sb = new StringBuilder(capacity: Math.Min(4096, maxEntries * 96));
+
+            int written = 0;
+            while (queue.Count > 0 && written < maxEntries)
+            {
+                var v = queue.Dequeue();
+                sb.AppendLine(v.LogbookFormat(Api));
+                written++;
+            }
+
+            // Commit to the book
+            bookMod.BeginEdit(byPlayer, bookSlot);
+            bookMod.EndEdit(byPlayer, sb.ToString(), title, true);
+        }
+
+        /// <summary>
+        /// Returns per-medium cap; prefers attributes/flags if present, falls back to code name check.
+        /// </summary>
+        private int GetMaxEntriesForMedium(ItemStack stack)
+        {
+            // Prefer an explicit attribute on the item, e.g. { "snitchMaxLog": 25 }
+            int attrCap = stack.ItemAttributes?["snitchMaxLog"].AsInt(-1) ?? -1;
+            if (attrCap > 0) return Math.Min(attrCap, MaxSnitchLog);
+
+            // Fallback to your existing heuristic
+            string code = stack.Collectible?.Code?.ToString() ?? string.Empty;
+            bool isParchment = code.IndexOf("parchment", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            int cap = isParchment ? MaxPaperLog : MaxBookLog;
+            return Math.Min(cap, MaxSnitchLog);
         }
 
         private void OnPingPlayers(float dt)
@@ -370,7 +401,7 @@ namespace raithesnitches.src.BlockEntities
 
         private bool ShouldPingPlayer(IPlayer player)
         {
-            if (!IsOwner(player)) return false;
+            if (IsOwner(player)) return false;
             if (CheckIgnorePlayer(player)) return false;
             if (Sneakable && player.Entity.Controls.Sneak && Pos.DistanceTo(player.Entity.Pos.AsBlockPos) > TrueSightRange) return false;
             return true;

@@ -8,7 +8,7 @@ namespace raithesnitches.src.harmonypatching
 {
 	public class HarmonyPatcher : ModSystem
 	{
-		private const string patchCode = "ModSystem";
+		private const string patchCode = "com.raithesnitches.patches";
 
 		public string sidedPatchCode;
 
@@ -24,7 +24,7 @@ namespace raithesnitches.src.harmonypatching
 			}
 			Assembly executingAssembly = Assembly.GetExecutingAssembly();
 			string arg = Mod?.Info.Name ?? executingAssembly.GetCustomAttribute<ModInfoAttribute>()?.Name ?? "Null";
-			sidedPatchCode = string.Format("{0}.{1}.{2}", arg, "ModSystem", api.Side);
+			sidedPatchCode = string.Format("{0}.{1}.{2}", arg, "com.raithesnitches.patches", api.Side);
 			harmonyInstance = new Harmony(sidedPatchCode);
 			harmonyInstance.PatchAll();
 			Dictionary<string, int> dictionary = new Dictionary<string, int>();
